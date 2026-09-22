@@ -5,6 +5,7 @@
 	import { connection, validateConnection } from '$lib/config/connection.svelte';
 	import { showToast } from '$lib/state/toast.svelte';
 	import { relativeTime, truncateId } from '$lib/utils/format';
+	import AssistantStatusCard from '$lib/components/AssistantStatusCard.svelte';
 
 	const info = $derived(nodeInfo.data);
 	const networkName = (n?: Network) =>
@@ -116,6 +117,7 @@
 			<Button variant="danger" onclick={disconnect}>Disconnect</Button>
 		</div>
 	</Card>
+	<AssistantStatusCard />
 </div>
 
 <style>
