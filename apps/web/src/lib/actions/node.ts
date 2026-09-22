@@ -62,7 +62,7 @@ export interface OpenChannelInput {
 	amountSats: string;
 	pushMsat?: string;
 	announce: boolean;
-	config?: Partial<ChannelConfig>;
+	config?: ChannelConfigInit;
 }
 
 export async function openChannel(input: OpenChannelInput): Promise<string> {
@@ -100,7 +100,7 @@ export async function closeChannel(
 export async function updateChannelConfig(
 	userChannelId: string,
 	counterpartyNodeId: string,
-	config: Partial<ChannelConfig>
+	config: ChannelConfigInit
 ): Promise<void> {
 	await requireClient().api.updateChannelConfig({
 		userChannelId,

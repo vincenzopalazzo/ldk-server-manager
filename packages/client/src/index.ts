@@ -11,3 +11,4 @@ export * from './gen/error_pb.js';
 
 // Re-export the protobuf helpers callers need to build nested messages.
 export { create, toJson, fromJson } from '@bufbuild/protobuf';
+export type { MessageInitShape, MessageShape } from '@bufbuild/protobuf';
