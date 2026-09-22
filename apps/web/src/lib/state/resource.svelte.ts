@@ -47,7 +47,10 @@ export class Resource<T> {
 	refresh(): Promise<T | undefined> {
 		if (this.inflight) return this.inflight;
 		this.loading = true;
-		this.inflight = this.fetcher()
+		// Run the fetcher inside an async boundary: a fetcher that throws synchronously
+		// (e.g. requireClient() with no connection) must land in .catch like any failed
+		// request, not escape to the caller and leave `loading` stuck on.
+		this.inflight = (async () => this.fetcher())()
 			.then((value) => {
 				this.data = value;
 				this.error = null;
