@@ -57,7 +57,7 @@ class NodeLink {
 	get hint(): string | null {
 		switch (this.state) {
 			case 'unauthorized':
-				return 'Check the key against `[api] key` in the node config, then save it again in Settings. Amounts are hidden until the node answers, so nothing below reflects your balance.';
+				return 'The key is the hex form of <storage_dir>/<network>/api_key on the node, e.g. `xxd -p -c 64 ~/.ldk-server/bitcoin/api_key`. Save it again in Settings. Amounts stay hidden until the node answers, so nothing below reflects your balance.';
 			case 'unreachable':
 				return 'Check that the gRPC-Web bridge is running and reachable at the configured URL, and that the node behind it is up.';
 			case 'error':

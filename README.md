@@ -40,8 +40,9 @@ so a gRPC-Web bridge has to sit between the page and the node. The request body 
 identical in gRPC and gRPC-Web, so the HMAC signature computed in the browser remains valid
 through the bridge.
 
-1. Start ldk-server and note its API key (`[api] key` in the config) and the auto-generated
-   certificate at `<storage_dir>/tls.crt`.
+1. Start ldk-server. It generates two things you need: the API key at
+   `<storage_dir>/<network>/api_key` (32 raw bytes — read it as hex with
+   `xxd -p -c 64 ~/.ldk-server/bitcoin/api_key`) and the certificate at `<storage_dir>/tls.crt`.
 2. Start the bridge:
 
    ```bash
