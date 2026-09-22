@@ -36,13 +36,8 @@ function persist(settings: ConnectionSettings | null) {
 /** Validate user-supplied connection settings. Returns an error message or null. */
 export function validateConnection(settings: ConnectionSettings): string | null {
 	if (!settings.url.trim()) return 'Server URL is required';
-	try {
-		const u = new URL(settings.url);
-		if (u.protocol !== 'http:' && u.protocol !== 'https:')
-			return 'Server URL must start with http:// or https://';
-	} catch {
-		return 'Server URL is not a valid URL';
-	}
+	if (!URL.canParse(settings.url)) return 'Server URL is not a valid URL';
+	if (!/^https?:\/\//i.test(settings.url.trim())) return 'Server URL must start with http:// or https://';
 	if (!settings.apiKey.trim()) return 'API key is required';
 	return null;
 }
