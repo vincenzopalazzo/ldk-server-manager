@@ -11,7 +11,7 @@
 	/** Providers whose endpoint holds the credential are served by the goose gateway. */
 	const viaGateway = $derived(provider.tokenOptional === true);
 	const check = $derived(gatewayHealth.data);
-	const status = $derived(describeGateway(check));
+	const status = $derived(describeGateway(check, assistantConfig.gooseProvider.name));
 
 	const hint = $derived(viaGateway ? status.hint : null);
 
@@ -20,6 +20,7 @@
 	$effect(() => {
 		const active = viaGateway;
 		void assistantConfig.host;
+		void assistantConfig.gooseProvider.id;
 		if (!active) return;
 		return untrack(() => watchGateway());
 	});
@@ -28,9 +29,13 @@
 <Card padding="20px">
 	<div class="h">Assistant</div>
 	<div class="cfg">
-		<div class="row"><span class="ck">provider</span><span class="cv">{provider.label}</span></div>
 		<div class="row">
-			<span class="ck">model</span><span class="cv">{assistantConfig.model}</span>
+			<span class="ck">provider</span><span class="cv">{assistantConfig.label}</span>
+		</div>
+		<div class="row">
+			<span class="ck">model</span><span class="cv"
+				>{assistantConfig.model || 'goose’s default'}</span
+			>
 		</div>
 		<div class="row">
 			<span class="ck">endpoint</span><span class="cv">{assistantConfig.host || '—'}</span>
@@ -76,6 +81,7 @@
 				{gatewayHealth.loading ? 'Checking…' : 'Check now'}
 			</Button>
 		{/if}
+		<Button variant="outline" onclick={() => (ui.providerPanelOpen = true)}>Change provider</Button>
 		<Button variant="outline" onclick={() => (ui.assistantOpen = true)}>Open assistant</Button>
 	</div>
 </Card>

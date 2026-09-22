@@ -9,7 +9,7 @@
 export type GatewayState =
 	/** Answered, and goose has a usable credential. */
 	| 'online'
-	/** Answered, but goose could not build its provider: nobody has signed in. */
+	/** Answered, but the chosen provider is not set up: no sign-in or key. */
 	| 'no-credential'
 	/** Nothing answered: not running, wrong address, or blocked. */
 	| 'unreachable'
@@ -47,11 +47,19 @@ interface HealthBody {
  */
 export async function checkGateway(
 	host: string,
-	opts: { fetch?: typeof fetch; timeoutMs?: number; now?: () => number } = {}
+	opts: {
+		/** The goose provider to check; the gateway's default when omitted. */
+		provider?: string;
+		fetch?: typeof fetch;
+		timeoutMs?: number;
+		now?: () => number;
+	} = {}
 ): Promise<GatewayCheck> {
 	const doFetch = opts.fetch ?? ((input, init) => globalThis.fetch(input, init));
 	const now = opts.now ?? (() => performance.now());
-	const url = healthUrl(host);
+	const url = opts.provider
+		? `${healthUrl(host)}?provider=${encodeURIComponent(opts.provider)}`
+		: healthUrl(host);
 	const base = { provider: null, latencyMs: null, detail: null, url, checkedAt: Date.now() };
 
 	const controller = new AbortController();

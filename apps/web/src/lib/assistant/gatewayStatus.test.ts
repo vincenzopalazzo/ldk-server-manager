@@ -25,10 +25,11 @@ describe('describeGateway', () => {
 		expect(v.hint).toBeNull();
 	});
 
-	it('points at goose configure when nobody is signed in', () => {
-		const v = describeGateway(check('no-credential'));
+	it('names the provider and points at the provider settings when it is not set up', () => {
+		const v = describeGateway(check('no-credential'), 'ChatGPT Codex');
 		expect(v.tone).toBe('amber');
-		expect(v.hint).toContain('goose configure');
+		expect(v.title).toBe('ChatGPT Codex is not set up');
+		expect(v.hint).toContain('provider settings');
 	});
 
 	it('names the probed address and the compose command when unreachable', () => {

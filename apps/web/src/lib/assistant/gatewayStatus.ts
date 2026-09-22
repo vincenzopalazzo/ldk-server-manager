@@ -17,7 +17,11 @@ export interface GatewayView {
 	hint: string | null;
 }
 
-export function describeGateway(check: GatewayCheck | undefined): GatewayView {
+export function describeGateway(
+	check: GatewayCheck | undefined,
+	/** Display name of the chosen goose provider, for the messages. */
+	providerName = 'The provider'
+): GatewayView {
 	if (!check) {
 		return {
 			text: 'checking…',
@@ -32,11 +36,11 @@ export function describeGateway(check: GatewayCheck | undefined): GatewayView {
 			return { text: 'online', tone: 'green', dot: 'var(--live)', title: null, hint: null };
 		case 'no-credential':
 			return {
-				text: 'no credential',
+				text: 'not set up',
 				tone: 'amber',
 				dot: 'var(--acc)',
-				title: 'goose is not signed in',
-				hint: 'The gateway is running but goose has no usable credential. On the host, run `goose configure` and choose xai_oauth.'
+				title: `${providerName} is not set up`,
+				hint: 'The gateway is running, but goose has no sign-in or key for it yet. Set it up in the provider settings.'
 			};
 		case 'unreachable':
 			return {

@@ -95,7 +95,7 @@ export const xaiProvider: Provider = {
  */
 export async function sendChat(
 	turn: Turn,
-	{ token, model, host, onText }: SendOptions,
+	{ token, model, host, onText, upstream }: SendOptions,
 	{ stream }: { stream: boolean }
 ): Promise<TurnResult> {
 	const base = (host || DEFAULT_HOST).replace(/\/+$/, '');
@@ -112,7 +112,9 @@ export async function sendChat(
 					function: { name: t.name, description: t.description, parameters: t.parameters }
 				})),
 				tool_choice: 'auto',
-				...(stream ? { stream: true } : {})
+				...(stream ? { stream: true } : {}),
+				// Not OpenAI's: the goose gateway's choice of provider.
+				...(upstream ? { provider: upstream } : {})
 			})
 		});
 	} catch {

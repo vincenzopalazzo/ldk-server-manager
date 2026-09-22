@@ -35,7 +35,7 @@ class Chat {
 
 		if (!assistantConfig.isReady) {
 			this.say(
-				`Add a ${assistantConfig.provider.label} token below to enable the assistant. It stays in this browser.`
+				`Add a ${assistantConfig.provider.label} key in the provider settings to enable the assistant. It stays in this browser.`
 			);
 			return;
 		}
@@ -83,6 +83,7 @@ class Chat {
 				token: assistantConfig.token,
 				model: assistantConfig.model,
 				host: assistantConfig.host,
+				upstream: assistantConfig.upstream,
 				history: this.messages,
 				resolved,
 				onText: (delta) => this.streamText(delta),
@@ -111,7 +112,7 @@ class Chat {
 			this.say(
 				e instanceof ProviderAuthError
 					? e.message
-					: `Something went wrong talking to ${assistantConfig.provider.label}: ${describeError(e)}`
+					: `Something went wrong talking to ${assistantConfig.label}: ${describeError(e)}`
 			);
 		} finally {
 			// A failed stream keeps whatever text had arrived; the error follows it.

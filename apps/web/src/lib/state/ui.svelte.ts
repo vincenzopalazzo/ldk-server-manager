@@ -4,6 +4,8 @@ export type ModalKind = 'send' | 'receive' | 'channel' | null;
 class UiState {
 	modal = $state<ModalKind>(null);
 	assistantOpen = $state(false);
+	/** The assistant's provider selection panel. */
+	providerPanelOpen = $state(false);
 	selectedChannelId = $state<string | null>(null);
 
 	open(kind: ModalKind) {

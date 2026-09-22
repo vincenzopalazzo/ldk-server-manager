@@ -22,9 +22,8 @@ export const gooseProvider: Provider = {
 	defaultHost: GOOSE_GATEWAY_HOST,
 	tokenOptional: true,
 	credentialHint:
-		'No token needed — goose holds the X subscription credential and refreshes it. ' +
-		'Start the gateway with `docker compose up -d` from this repository (or `cargo run --release` in goose-gateway) ' +
-		'after a one-time `goose configure` → xai_oauth on the host. Change the host only if you moved it.',
+		'No token in this browser: goose on the gateway holds the sign-in or key and refreshes it. ' +
+		'Start the gateway with `docker compose up -d` from this repository.',
 	send: (turn, opts) =>
 		// The gateway ignores the bearer; send a placeholder so the request shape stays valid.
 		sendChat(

@@ -9,6 +9,7 @@
 	import ReceiveModal from '$lib/components/ReceiveModal.svelte';
 	import LiquidityModal from '$lib/components/LiquidityModal.svelte';
 	import AssistantDrawer from '$lib/components/AssistantDrawer.svelte';
+	import ProviderPanel from '$lib/components/ProviderPanel.svelte';
 	import { connection } from '$lib/config/connection.svelte';
 	import { balances, channels, nodeInfo, peers, resetAll } from '$lib/state/node.svelte';
 	import { payments } from '$lib/state/payments.svelte';
@@ -83,6 +84,7 @@
 	{#if ui.modal === 'receive'}<ReceiveModal />{/if}
 	{#if ui.modal === 'channel'}<LiquidityModal />{/if}
 	{#if ui.assistantOpen}<AssistantDrawer />{/if}
+	{#if ui.providerPanelOpen}<ProviderPanel />{/if}
 	<Toast message={toast.message} />
 </div>
 

@@ -37,6 +37,12 @@ describe('checkGateway', () => {
 		expect(check.url).toBe('http://127.0.0.1:8791/health');
 	});
 
+	it('asks about the chosen provider', async () => {
+		const fetch = respond({ ok: true, provider: 'chatgpt_codex', credential: true });
+		await checkGateway('http://127.0.0.1:8791/v1', { fetch, provider: 'chatgpt_codex' });
+		expect(fetch.mock.calls[0][0]).toBe('http://127.0.0.1:8791/health?provider=chatgpt_codex');
+	});
+
 	it('reports no-credential when the gateway runs but nobody signed in', async () => {
 		const fetch = respond({ ok: true, provider: 'xai_oauth', credential: false });
 		const check = await checkGateway('http://127.0.0.1:8791/v1', { fetch });

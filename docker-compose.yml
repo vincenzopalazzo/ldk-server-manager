@@ -1,8 +1,8 @@
 # Everything the browser app needs beside the node itself.
 #
 #   grpc-web-bridge  Envoy: translates the page's gRPC-Web into ldk-server's native gRPC.
-#   goose-gateway    OpenAI-compatible endpoint backed by the goose SDK's xai_oauth provider,
-#                    so the assistant can use an X subscription and goose keeps the token fresh.
+#   goose-gateway    OpenAI-compatible endpoint backed by goose, so the assistant can use any
+#                    goose provider or subscription; set them up from the app's provider panel.
 #                    Built from https://github.com/vincenzopalazzo/goose-gateway at a pinned tag.
 #
 # Usage:
@@ -33,7 +33,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   goose-gateway:
-    build: https://github.com/vincenzopalazzo/goose-gateway.git#v0.1.0
+    build: https://github.com/vincenzopalazzo/goose-gateway.git#v0.2.0
     environment:
       # The gateway answers localhost origins only; the deployed app needs to be listed too.
       GOOSE_GATEWAY_ALLOWED_ORIGINS: ${GOOSE_GATEWAY_ALLOWED_ORIGINS:-https://ldk-server-manager.pages.dev}

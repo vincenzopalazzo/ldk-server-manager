@@ -11,9 +11,15 @@ export const providerById = (id: ProviderId): Provider =>
 
 const KEY = 'ldk-server-manager:assistant';
 
+/** goose's own provider behind the gateway when none was chosen: the X subscription. */
+export const DEFAULT_GOOSE_PROVIDER = { id: 'xai_oauth', name: 'xAI (SuperGrok Subscription)' };
+
 interface Stored {
 	provider: ProviderId;
-	model: string;
+	/** Model for each selection: `anthropic`, `xai`, or `goose:<goose provider id>`. */
+	models: Record<string, string>;
+	/** Which goose provider the gateway uses, and its display name for labels. */
+	gooseProvider: { id: string; name: string };
 	/** Credential per provider, so switching back does not lose the other one. */
 	tokens: Partial<Record<ProviderId, string>>;
 	/** Host override per provider (e.g. the goose gateway moved to another port). */
@@ -23,7 +29,8 @@ interface Stored {
 function load(): Stored {
 	const fallback: Stored = {
 		provider: 'goose',
-		model: gooseProvider.defaultModel,
+		models: {},
+		gooseProvider: DEFAULT_GOOSE_PROVIDER,
 		tokens: {},
 		hosts: {}
 	};
@@ -31,14 +38,24 @@ function load(): Stored {
 	try {
 		const raw = localStorage.getItem(KEY);
 		if (!raw) return fallback;
-		const p = JSON.parse(raw) as Partial<Stored>;
+		const p = JSON.parse(raw) as Partial<Stored> & { model?: unknown };
 		const known: ProviderId[] = ['goose', 'xai', 'anthropic'];
 		const provider = known.includes(p.provider as ProviderId)
 			? (p.provider as ProviderId)
 			: 'goose';
+		const gp = p.gooseProvider;
+		const goose =
+			gp && typeof gp.id === 'string' && typeof gp.name === 'string' ? gp : DEFAULT_GOOSE_PROVIDER;
+		const models: Record<string, string> =
+			typeof p.models === 'object' && p.models !== null ? { ...p.models } : {};
+		// Before per-provider models there was one `model`; keep it for what was selected.
+		if (typeof p.model === 'string' && Object.keys(models).length === 0) {
+			models[provider === 'goose' ? `goose:${goose.id}` : provider] = p.model;
+		}
 		return {
 			provider,
-			model: typeof p.model === 'string' ? p.model : providerById(provider).defaultModel,
+			models,
+			gooseProvider: goose,
 			tokens: typeof p.tokens === 'object' && p.tokens !== null ? p.tokens : {},
 			hosts: typeof p.hosts === 'object' && p.hosts !== null ? p.hosts : {}
 		};
@@ -53,20 +70,66 @@ function load(): Stored {
  */
 class AssistantConfig {
 	providerId = $state<ProviderId>('goose');
-	model = $state<string>(gooseProvider.defaultModel);
+	/** The goose provider behind the gateway (only used when `providerId` is `goose`). */
+	gooseProvider = $state<{ id: string; name: string }>(DEFAULT_GOOSE_PROVIDER);
+	private models = $state<Record<string, string>>({});
 	private tokens = $state<Partial<Record<ProviderId, string>>>({});
 	private hosts = $state<Partial<Record<ProviderId, string>>>({});
 
 	constructor() {
 		const s = load();
 		this.providerId = s.provider;
-		this.model = s.model;
+		this.gooseProvider = s.gooseProvider;
+		this.models = s.models;
 		this.tokens = s.tokens;
 		this.hosts = s.hosts;
 	}
 
 	get provider(): Provider {
 		return providerById(this.providerId);
+	}
+
+	private get selectionKey(): string {
+		return this.providerId === 'goose' ? `goose:${this.gooseProvider.id}` : this.providerId;
+	}
+
+	/**
+	 * Model for the current selection. Empty for a goose provider picked before its model
+	 * list was known, in which case the gateway uses goose's default for it.
+	 */
+	get model(): string {
+		const chosen = this.models[this.selectionKey];
+		if (chosen) return chosen;
+		if (this.providerId === 'goose') {
+			return this.gooseProvider.id === DEFAULT_GOOSE_PROVIDER.id ? gooseProvider.defaultModel : '';
+		}
+		return this.provider.defaultModel;
+	}
+
+	/** What is answering, for labels: "ChatGPT Codex via goose", "Claude (Anthropic)". */
+	get label(): string {
+		return this.providerId === 'goose'
+			? `${this.gooseProvider.name} via goose`
+			: this.provider.label;
+	}
+
+	/** For a gateway in front of several providers, which one answers. */
+	get upstream(): string | undefined {
+		return this.providerId === 'goose' ? this.gooseProvider.id : undefined;
+	}
+
+	/** Credential stored for a browser-direct provider, whether or not it is selected. */
+	tokenFor(id: ProviderId): string {
+		return this.tokens[id] ?? '';
+	}
+
+	/** Save or clear the credential for a browser-direct provider. */
+	setTokenFor(id: ProviderId, value: string) {
+		const next = { ...this.tokens };
+		if (value.trim()) next[id] = value.trim();
+		else delete next[id];
+		this.tokens = next;
+		this.persist();
 	}
 
 	/** Credential for the active provider, or '' when none is set. */
@@ -84,24 +147,44 @@ class AssistantConfig {
 		return this.provider.tokenOptional === true || this.token.length > 0;
 	}
 
-	setHost(value: string) {
+	/** Effective host for any provider, selected or not (the gateway, from the panel). */
+	hostFor(id: ProviderId): string {
+		return this.hosts[id] || providerById(id).defaultHost || '';
+	}
+
+	/** Override a provider's host; blank reverts to its default. */
+	setHostFor(id: ProviderId, value: string) {
 		const v = value.trim();
 		const next = { ...this.hosts };
-		if (v) next[this.providerId] = v;
-		else delete next[this.providerId];
+		if (v && v !== providerById(id).defaultHost) next[id] = v;
+		else delete next[id];
 		this.hosts = next;
 		this.persist();
 	}
 
+	setHost(value: string) {
+		this.setHostFor(this.providerId, value);
+	}
+
 	setProvider(id: ProviderId) {
 		this.providerId = id;
-		// Keep the chosen model valid for the new provider.
-		if (!this.provider.models.includes(this.model)) this.model = this.provider.defaultModel;
+		this.persist();
+	}
+
+	/**
+	 * Use a goose provider through the gateway. `defaultModel` seeds the model the first time
+	 * it is picked; after that the operator's own choice for it is kept.
+	 */
+	useGooseProvider(p: { id: string; name: string }, defaultModel: string) {
+		this.providerId = 'goose';
+		this.gooseProvider = { id: p.id, name: p.name };
+		const key = `goose:${p.id}`;
+		if (!this.models[key] && defaultModel) this.models = { ...this.models, [key]: defaultModel };
 		this.persist();
 	}
 
 	setModel(model: string) {
-		this.model = model;
+		this.models = { ...this.models, [this.selectionKey]: model.trim() };
 		this.persist();
 	}
 
@@ -122,7 +205,8 @@ class AssistantConfig {
 		try {
 			const out: Stored = {
 				provider: this.providerId,
-				model: this.model,
+				models: this.models,
+				gooseProvider: this.gooseProvider,
 				tokens: this.tokens,
 				hosts: this.hosts
 			};

@@ -3,10 +3,13 @@ import { assistantConfig } from './config.svelte';
 import { checkGateway, type GatewayCheck } from './gateway';
 
 /**
- * Live gateway status for the active assistant settings. Reads the host at call time,
- * so changing it in the assistant's Setup panel is picked up on the next check.
+ * Live gateway status for the active assistant settings. Reads the host and the chosen goose
+ * provider at call time, so a change in the provider panel is picked up on the next check.
  */
-export const gatewayHealth = new Resource<GatewayCheck>(() => checkGateway(assistantConfig.host));
+export const gatewayHealth = new Resource<GatewayCheck>(() =>
+	// Always the gateway's address, even while a browser-direct provider is selected.
+	checkGateway(assistantConfig.hostFor('goose'), { provider: assistantConfig.gooseProvider.id })
+);
 
 export const GATEWAY_POLL_MS = 15_000;
 

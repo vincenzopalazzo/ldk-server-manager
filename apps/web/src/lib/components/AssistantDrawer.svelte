@@ -1,13 +1,11 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { Button, Dot, Drawer, Input, PillTabs } from '@ldk-server-manager/ui';
+	import { Button, Dot, Drawer, Input } from '@ldk-server-manager/ui';
 	import { ui } from '$lib/state/ui.svelte';
 	import { chat } from '$lib/assistant/chat.svelte';
-	import { assistantConfig, PROVIDERS } from '$lib/assistant/config.svelte';
+	import { assistantConfig } from '$lib/assistant/config.svelte';
 	import { gatewayHealth, watchGateway } from '$lib/assistant/gateway.svelte';
 	import { describeGateway } from '$lib/assistant/gatewayStatus';
-	import type { ProviderId } from '$lib/assistant/providers/types';
-	import { showToast } from '$lib/state/toast.svelte';
 
 	const SUGGESTIONS = [
 		'How is my node doing?',
@@ -16,22 +14,18 @@
 	];
 
 	let input = $state('');
-	let tokenInput = $state('');
-	let hostInput = $state('');
-	let settingsOpen = $state(false);
 	let body: HTMLDivElement | undefined = $state();
 
 	const provider = $derived(assistantConfig.provider);
-	const tabs = $derived(PROVIDERS.map((p) => ({ key: p.id, label: p.label })));
 	const subtitle = $derived(
 		assistantConfig.isReady
-			? `${provider.label} · ${assistantConfig.model}`
-			: `${provider.label} · no token`
+			? [assistantConfig.label, assistantConfig.model].filter(Boolean).join(' · ')
+			: `${assistantConfig.label} · no key`
 	);
 
 	/** Providers whose endpoint holds the credential are served by the goose gateway. */
 	const viaGateway = $derived(provider.tokenOptional === true);
-	const gateway = $derived(describeGateway(gatewayHealth.data));
+	const gateway = $derived(describeGateway(gatewayHealth.data, assistantConfig.gooseProvider.name));
 	/** Only a finished check that found a problem is worth interrupting the chat for. */
 	const gatewayProblem = $derived(
 		viaGateway && gatewayHealth.data && gatewayHealth.data.state !== 'online' ? gateway : null
@@ -41,6 +35,7 @@
 	$effect(() => {
 		const active = viaGateway;
 		void assistantConfig.host;
+		void assistantConfig.gooseProvider.id;
 		if (!active) return;
 		return untrack(() => watchGateway());
 	});
@@ -51,26 +46,8 @@
 		void chat.send(text);
 	}
 
-	function saveSettings() {
-		// Token: an entry replaces the stored one; leaving it blank keeps it (a blank on a
-		// provider that needs no token is the normal case). Host: blank reverts to the default.
-		if (tokenInput.trim()) assistantConfig.setToken(tokenInput);
-		assistantConfig.setHost(hostInput);
-		tokenInput = '';
-		showToast('Assistant settings saved');
-	}
-
-	function forgetToken() {
-		assistantConfig.clearToken();
-		tokenInput = '';
-		showToast('Assistant token removed');
-	}
-
-	function pickProvider(id: ProviderId) {
-		assistantConfig.setProvider(id);
-		tokenInput = '';
-		hostInput =
-			assistantConfig.host === assistantConfig.provider.defaultHost ? '' : assistantConfig.host;
+	function openProviders() {
+		ui.providerPanelOpen = true;
 	}
 
 	// Keep the transcript pinned to the newest message.
@@ -105,14 +82,18 @@
 				<div class="atitle">{gatewayProblem.title}</div>
 				<div class="gwhint">{gatewayProblem.hint}</div>
 			</div>
-			<Button
-				variant="outline"
-				size="md"
-				onclick={() => gatewayHealth.refresh()}
-				disabled={gatewayHealth.loading}
-			>
-				{gatewayHealth.loading ? 'Checking…' : 'Check again'}
-			</Button>
+			{#if gatewayHealth.data?.state === 'no-credential'}
+				<Button variant="outline" size="md" onclick={openProviders}>Set up</Button>
+			{:else}
+				<Button
+					variant="outline"
+					size="md"
+					onclick={() => gatewayHealth.refresh()}
+					disabled={gatewayHealth.loading}
+				>
+					{gatewayHealth.loading ? 'Checking…' : 'Check again'}
+				</Button>
+			{/if}
 		</div>
 	{/if}
 
@@ -141,40 +122,10 @@
 		{/if}
 	</div>
 
-	{#if settingsOpen || !assistantConfig.isReady}
-		<div class="config">
-			<PillTabs items={tabs} active={assistantConfig.providerId} onselect={pickProvider} />
-			<div class="row">
-				<select
-					class="model"
-					value={assistantConfig.model}
-					onchange={(e) => assistantConfig.setModel(e.currentTarget.value)}
-				>
-					{#each provider.models as m (m)}
-						<option value={m}>{m}</option>
-					{/each}
-				</select>
-			</div>
-			<div class="row">
-				<Input bind:value={hostInput} mono placeholder={provider.defaultHost ?? 'host'} />
-			</div>
-			{#if !provider.tokenOptional}
-				<div class="row">
-					<Input
-						bind:value={tokenInput}
-						mono
-						type="password"
-						placeholder={assistantConfig.token ? 'replace token' : 'token'}
-					/>
-					{#if assistantConfig.token}
-						<Button variant="outline" size="lg" onclick={forgetToken}>Forget</Button>
-					{/if}
-				</div>
-			{/if}
-			<div class="row">
-				<Button variant="dark" size="lg" onclick={saveSettings}>Save</Button>
-			</div>
-			<div class="hint">{provider.credentialHint}</div>
+	{#if !assistantConfig.isReady}
+		<div class="setup">
+			<span>{provider.label} needs a key before it can answer.</span>
+			<Button size="md" onclick={openProviders}>Choose a provider</Button>
 		</div>
 	{/if}
 
@@ -182,9 +133,7 @@
 		{#each SUGGESTIONS as s (s)}
 			<button class="chip" onclick={() => send(s)}>{s}</button>
 		{/each}
-		<button class="chip" onclick={() => (settingsOpen = !settingsOpen)}>
-			{settingsOpen ? 'Hide setup' : 'Setup'}
-		</button>
+		<button class="chip" onclick={openProviders}>Provider</button>
 		<button class="chip" onclick={() => chat.clear()}>Clear</button>
 	</div>
 
@@ -281,31 +230,15 @@
 		margin-top: 2px;
 		word-break: break-word;
 	}
-	.config {
+	.setup {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
 		padding: 12px 14px;
 		border-top: 1px solid var(--line);
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-	}
-	.row {
-		display: flex;
-		gap: 8px;
-	}
-	.model {
-		flex: 1;
-		padding: 8px 10px;
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		background: var(--bg);
-		color: var(--ink);
-		font-family: var(--font-mono);
-		font-size: 12px;
-	}
-	.hint {
-		font-size: 11px;
+		font-size: 12.5px;
 		color: var(--muted);
-		line-height: 1.5;
 	}
 	.chips {
 		padding: 10px 14px;

@@ -67,6 +67,8 @@ export interface SendOptions {
 	 * ignore it, and the full text still arrives in the result either way.
 	 */
 	onText?: (delta: string) => void;
+	/** For a gateway in front of several providers, which one answers. */
+	upstream?: string;
 }
 
 /** Raised when the credential is missing, wrong or expired. */

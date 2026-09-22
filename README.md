@@ -86,32 +86,47 @@ binds the closest real signal instead:
 
 ## Assistant
 
-The drawer can answer questions about the node and run operations on it. Three providers ship
-today, chosen per browser along with the model:
+The drawer can answer questions about the node and run operations on it. Pick who answers in
+the **Assistant provider** panel (the drawer's "Provider" chip, or "Change provider" on the
+Settings page). The choice and model are kept per browser.
 
-| Provider       | Runs through                          | Credential                                        |
-| -------------- | ------------------------------------- | ------------------------------------------------- |
-| goose (local)  | goose SDK in the Rust gateway sidecar | held by goose; nothing pasted in the browser      |
-| Grok (xAI)     | `https://api.x.ai/v1` from the page   | an xAI API key, or an X subscription access token |
-| Claude         | Anthropic Messages API from the page  | an Anthropic API key                              |
+| Option                     | Runs through                          | Credential                                   |
+| -------------------------- | ------------------------------------- | -------------------------------------------- |
+| any goose provider         | goose in the Rust gateway sidecar     | held by goose on your machine; set up in the panel |
+| Grok (xAI), direct         | `https://api.x.ai/v1` from the page   | an xAI API key, kept in this browser         |
+| Claude (Anthropic), direct | Anthropic Messages API from the page  | an Anthropic API key, kept in this browser   |
 
-### goose (default)
+### Through goose (default)
 
-`goose (local)` talks to [goose-gateway](https://github.com/vincenzopalazzo/goose-gateway), a
+The panel lists every chat provider goose supports, grouped as subscriptions (xAI SuperGrok,
+ChatGPT, GitHub Copilot), API keys (Anthropic, OpenAI, Gemini, OpenRouter, Mistral…) and local
+models (Ollama), with more behind a toggle. Each shows whether it is ready, and sets up in
+place:
+
+- **Subscriptions**: press Sign in. Copilot shows a code to enter on github.com. xAI and
+  ChatGPT open the provider's sign-in page. With the gateway in Docker, the page you land on
+  afterwards (`http://127.0.0.1:…/callback?…`) will not load; paste its address back into the
+  panel and the gateway finishes the sign-in.
+- **API keys and local servers**: fill in the fields and save. Keys go to the gateway and are
+  stored by goose on that machine; they never come back to the page.
+
+These talk to [goose-gateway](https://github.com/vincenzopalazzo/goose-gateway), a
 small Rust service in its own repository that puts an
 OpenAI-compatible endpoint in front of the [goose SDK](https://github.com/aaif-goose/goose).
 Because it speaks the same wire format the Grok provider already uses, this preset is simply
 that provider aimed at the gateway: the page carries no goose-specific code.
 
-The point of it is the credential. The X subscription token is an OAuth token that expires,
-and a page cannot renew it because `auth.x.ai` sends no CORS headers. The gateway uses goose's
-own `xai_oauth` provider, so the renewal logic is goose's, not a copy, and nothing is pasted
-into the browser. It reads the token `goose configure` wrote and writes it back when refreshed.
+The point of it is the credential. A subscription token is an OAuth token that expires, and a
+page cannot obtain or renew it (`auth.x.ai`, for one, sends no CORS headers). The gateway
+uses goose's own providers, so sign-in and renewal are goose's, not a copy, and nothing is
+pasted into the browser.
 
 ```bash
-goose configure              # once, on the host: choose xai_oauth
 docker compose up -d         # from the repository root; gateway on http://127.0.0.1:8791
 ```
+
+Anything set up with `goose configure` on the host (into `~/.config/goose`, which the compose
+file mounts) shows up as ready too.
 
 Replies stream. The gateway only answers browser origins it allows: localhost on any port,
 plus `https://ldk-server-manager.pages.dev`, which `docker-compose.yml` adds. If you serve the

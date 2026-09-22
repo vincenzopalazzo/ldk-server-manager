@@ -7,10 +7,12 @@
 		width?: number;
 		/** Allow the panel to scroll when tall (add liquidity modal). */
 		scroll?: boolean;
+		/** Stacking order; raise it to open above the drawer (60). */
+		z?: number;
 		onclose: () => void;
 		children: Snippet;
 	}
-	let { title, width = 460, scroll = false, onclose, children }: Props = $props();
+	let { title, width = 460, scroll = false, z = 50, onclose, children }: Props = $props();
 
 	function onkeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') onclose();
@@ -20,7 +22,7 @@
 <svelte:window {onkeydown} />
 
 <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-<div class="overlay" onclick={onclose}>
+<div class="overlay" style:z-index={z} onclick={onclose}>
 	<div
 		class="panel"
 		class:scroll
@@ -47,7 +49,6 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		z-index: 50;
 		padding: 20px;
 	}
 	.panel {
