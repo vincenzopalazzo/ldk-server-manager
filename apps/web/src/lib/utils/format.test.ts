@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { formatBtc, formatMsat, formatSats, msatToSats, parseSats, percent, ppmToPercent, relativeTime, truncateId } from './format';
+import {
+	formatBtc,
+	formatMsat,
+	formatSats,
+	msatToSats,
+	parseSats,
+	percent,
+	ppmToPercent,
+	relativeTime,
+	truncateId
+} from './format';
 
 describe('format', () => {
 	it('converts msat to sats', () => {

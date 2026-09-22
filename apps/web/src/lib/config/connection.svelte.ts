@@ -38,7 +38,8 @@ export function validateConnection(settings: ConnectionSettings): string | null 
 	if (!settings.url.trim()) return 'Server URL is required';
 	try {
 		const u = new URL(settings.url);
-		if (u.protocol !== 'http:' && u.protocol !== 'https:') return 'Server URL must start with http:// or https://';
+		if (u.protocol !== 'http:' && u.protocol !== 'https:')
+			return 'Server URL must start with http:// or https://';
 	} catch {
 		return 'Server URL is not a valid URL';
 	}

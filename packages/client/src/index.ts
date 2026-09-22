@@ -8,3 +8,6 @@ export * from './gen/api_pb.js';
 export * from './gen/types_pb.js';
 export * from './gen/events_pb.js';
 export * from './gen/error_pb.js';
+
+// Re-export the protobuf helpers callers need to build nested messages.
+export { create, toJson, fromJson } from '@bufbuild/protobuf';

@@ -13,7 +13,9 @@ export class PagedList<T> {
 	nextPageToken = $state<string | undefined>(undefined);
 	loadedOnce = $state(false);
 
-	constructor(private readonly fetchPage: (pageToken?: string) => Promise<{ items: T[]; next?: string }>) {}
+	constructor(
+		private readonly fetchPage: (pageToken?: string) => Promise<{ items: T[]; next?: string }>
+	) {}
 
 	get hasMore(): boolean {
 		return this.nextPageToken !== undefined;
