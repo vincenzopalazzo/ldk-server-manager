@@ -84,6 +84,42 @@ binds the closest real signal instead:
 | Settings "Version" / "Rotate key"   | best block, sync timestamps, and the bridge connection form             |
 | Assistant (`window.claude`)         | Claude API called from the browser with a key stored only locally        |
 
+## Assistant
+
+The drawer talks to a model directly from the browser and can run node operations. Two
+providers ship today, chosen per browser along with the model:
+
+| Provider        | Host                      | Credential                                                |
+| --------------- | ------------------------- | --------------------------------------------------------- |
+| Grok (xAI)      | `https://api.x.ai/v1`     | an xAI API key, or an X subscription access token          |
+| Claude          | Anthropic Messages API    | an Anthropic API key                                       |
+
+The xAI provider mirrors goose's `xai` / `xai_oauth` providers: same host, same model list,
+and the same `Authorization: Bearer <token>` header. goose points both its API-key and its
+subscription provider at that one host, so a subscription token works here unchanged. Get one
+with `goose configure` (choose `xai_oauth`) and then:
+
+```bash
+jq -r .access_token ~/.config/goose/xai_oauth/tokens.json
+```
+
+Subscription tokens expire and the app cannot refresh them, because `auth.x.ai` sends no CORS
+headers and so the OAuth exchange cannot happen in a browser. Paste a fresh token when Grok
+starts rejecting requests, or use an API key, which does not expire.
+
+> The goose SDK itself is not used here. `goose-sdk` is a Rust crate exposing UniFFI bindings
+> for Python and Kotlin only; there is no JavaScript or WASM target, so it cannot run inside a
+> browser-only app. What carries over is its provider contract, reimplemented in TypeScript in
+> `apps/web/src/lib/assistant/providers/`.
+
+### Tool approval
+
+The assistant can create invoices, send payments and open channels. Anything that moves funds
+is never executed on the model's say-so: the call is shown to the operator with a plain-English
+summary and runs only after Approve. A decline is fed back to the model as a tool result so it
+can respond instead of silently retrying. `agent.test.ts` pins this behaviour, including the
+case where a risky call arrives alongside a harmless one.
+
 ## Deploying
 
 The production build is a folder of static files, so any static host works. This repo is set up

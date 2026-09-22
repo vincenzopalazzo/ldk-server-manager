@@ -1,183 +1,88 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { requireClient } from '$lib/api/client.svelte';
-import { createBolt11Invoice, openChannel, parsePeerUri, sendPayment } from '$lib/actions/node';
-import { balances, channels, nodeInfo, peers } from '$lib/state/node.svelte';
-import { payments } from '$lib/state/payments.svelte';
-import { channelStatus, localSats, remoteSats } from '$lib/domain/channels';
-import {
-	paymentDescription,
-	paymentKind,
-	paymentStatusLabel,
-	isOutbound
-} from '$lib/domain/payments';
-import { aliases } from '$lib/state/aliases.svelte';
-import { describeError } from '$lib/state/resource.svelte';
-import { msatToSats } from '$lib/utils/format';
+import { systemPrompt } from './snapshot';
+import { TOOLS, needsConfirmation, runTool } from './tools';
+import type { ChatMessage, ToolCall, ToolResult, Turn } from './providers/types';
+import type { Provider } from './providers/types';
 
-export interface ChatMessage {
-	role: 'user' | 'ai';
-	text: string;
+export type { ChatMessage } from './providers/types';
+
+export interface Resolved {
+	call: ToolCall;
+	result: ToolResult;
 }
 
-const MODEL = 'claude-opus-5';
+/** Outcome of one pass: either the model answered, or it wants to run something risky. */
+export type AgentStep =
+	{ kind: 'done'; text: string } | { kind: 'confirm'; calls: ToolCall[]; resolved: Resolved[] };
 
-const SYSTEM =
-	'You are the operations assistant embedded in an LDK Server (Lightning Network node) dashboard, in the spirit of a Square/Block terminal assistant. ' +
-	'You help the operator analyze the node and run operations. Be concise (2-6 short lines), plain language, amounts in sats with thousands separators. ' +
-	'Use the tools to act when the user asks for an operation; confirm what you did.';
+const MAX_PASSES = 6;
 
-/** Snapshot of live node state handed to the model on every turn. */
-export function nodeSnapshot() {
-	const info = nodeInfo.data;
-	const bal = balances.data;
-	const chs = channels.data ?? [];
-	const ln = bal?.totalLightningBalanceSats ?? 0n;
-	const oc = bal?.totalOnchainBalanceSats ?? 0n;
-	return {
-		alias: info?.nodeAlias ?? null,
-		node_id: info?.nodeId ?? null,
-		block_height: info?.currentBestBlock?.height ?? null,
-		balances_sats: { lightning: Number(ln), onchain: Number(oc), total: Number(ln + oc) },
-		channels: chs.map((c) => ({
-			peer: aliases.get(c.counterpartyNodeId),
-			peer_node_id: c.counterpartyNodeId,
-			user_channel_id: c.userChannelId,
-			capacity_sats: Number(c.channelValueSats),
-			local_sats: Number(localSats(c)),
-			remote_sats: Number(remoteSats(c)),
-			status: channelStatus(c)
-		})),
-		peers_connected: (peers.data ?? []).filter((p) => p.isConnected).length,
-		recent_payments: payments.items.slice(0, 6).map((p) => ({
-			dir: isOutbound(p) ? 'out' : 'in',
-			kind: paymentKind(p),
-			amount_sats: Number(msatToSats(p.amountMsat)),
-			status: paymentStatusLabel(p),
-			desc: paymentDescription(p)
-		}))
-	};
-}
-
-const tools: Anthropic.Tool[] = [
-	{
-		name: 'create_invoice',
-		description: 'Create a BOLT11 invoice on this node',
-		strict: true,
-		input_schema: {
-			type: 'object',
-			properties: { amount_sats: { type: 'number' }, description: { type: 'string' } },
-			required: ['amount_sats', 'description'],
-			additionalProperties: false
-		}
-	},
-	{
-		name: 'send_payment',
-		description:
-			'Pay a destination: BOLT11 invoice, BOLT12 offer, BIP21 URI or on-chain address. amount_sats is only needed when the destination has no fixed amount.',
-		strict: true,
-		input_schema: {
-			type: 'object',
-			properties: { destination: { type: 'string' }, amount_sats: { type: ['number', 'null'] } },
-			required: ['destination', 'amount_sats'],
-			additionalProperties: false
-		}
-	},
-	{
-		name: 'open_channel',
-		description: 'Open a new channel to a peer given as node_id@host:port',
-		strict: true,
-		input_schema: {
-			type: 'object',
-			properties: {
-				peer: { type: 'string' },
-				capacity_sats: { type: 'number' },
-				announce: { type: 'boolean' }
-			},
-			required: ['peer', 'capacity_sats', 'announce'],
-			additionalProperties: false
-		}
-	}
-];
-
-async function runTool(name: string, input: Record<string, unknown>): Promise<string> {
-	try {
-		requireClient();
-		switch (name) {
-			case 'create_invoice': {
-				const r = await createBolt11Invoice({
-					amountSats: String(input.amount_sats),
-					description: String(input.description ?? ''),
-					expirySecs: 3600
-				});
-				return `Invoice created for ${Number(input.amount_sats).toLocaleString('en-US')} sats: ${r.invoice}`;
-			}
-			case 'send_payment': {
-				const r = await sendPayment({
-					destination: String(input.destination),
-					amountSats: input.amount_sats == null ? undefined : String(input.amount_sats)
-				});
-				return `Payment submitted (${r.kind}: ${r.id}). Check the payments list for its final status.`;
-			}
-			case 'open_channel': {
-				const { nodePubkey, address } = parsePeerUri(String(input.peer));
-				const id = await openChannel({
-					nodePubkey,
-					address,
-					amountSats: String(input.capacity_sats),
-					announce: Boolean(input.announce)
-				});
-				return `Channel opening initiated (user channel id ${id}). Awaiting funding confirmation.`;
-			}
-			default:
-				return `Unknown tool ${name}`;
-		}
-	} catch (e) {
-		return `Error: ${describeError(e)}`;
-	}
+export interface RunOptions {
+	provider: Provider;
+	token: string;
+	model: string;
+	history: ChatMessage[];
+	/** Tool calls already executed or approved in this exchange. */
+	resolved?: Resolved[];
 }
 
 /**
- * One assistant turn: sends the conversation with a live node snapshot, runs any
- * tool calls against the real node, and returns the final text reply.
+ * Drive the model until it produces prose or asks for something that needs approval.
+ *
+ * Tools marked `confirm` are never executed here. When the model asks for one, the pass
+ * stops and returns it, so the operator decides. Harmless tools run inline and the loop
+ * continues, which keeps "create an invoice for 50k" a single round trip.
  */
-export async function runAssistant(apiKey: string, history: ChatMessage[]): Promise<string> {
-	const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
-	const messages: Anthropic.MessageParam[] = history.map((m) => ({
-		role: m.role === 'ai' ? 'assistant' : 'user',
-		content: m.text
-	}));
-	const system = `${SYSTEM} Current node snapshot: ${JSON.stringify(nodeSnapshot())}`;
+export async function run(opts: RunOptions): Promise<AgentStep> {
+	const { provider, token, model, history } = opts;
+	let resolved: Resolved[] = opts.resolved ?? [];
 
-	for (let i = 0; i < 6; i++) {
-		const response = await client.messages.create({
-			model: MODEL,
-			max_tokens: 1024,
-			system,
-			output_config: { effort: 'medium' },
-			tools,
-			messages
-		});
-		if (response.stop_reason === 'refusal') return 'I can’t help with that request.';
-		const toolUses = response.content.filter(
-			(b): b is Anthropic.ToolUseBlock => b.type === 'tool_use'
-		);
-		if (response.stop_reason !== 'tool_use' || toolUses.length === 0) {
-			return response.content
-				.filter((b): b is Anthropic.TextBlock => b.type === 'text')
-				.map((b) => b.text)
-				.join('\n')
-				.trim();
+	for (let pass = 0; pass < MAX_PASSES; pass++) {
+		const turn: Turn = { system: systemPrompt(), history, tools: TOOLS, resolved };
+		const result = await provider.send(turn, { token, model });
+
+		if (result.calls.length === 0) {
+			return { kind: 'done', text: result.text || '(no reply)' };
 		}
-		messages.push({ role: 'assistant', content: response.content });
-		const results: Anthropic.ToolResultBlockParam[] = [];
-		for (const t of toolUses) {
-			results.push({
-				type: 'tool_result',
-				tool_use_id: t.id,
-				content: await runTool(t.name, t.input as Record<string, unknown>)
+
+		const risky = result.calls.filter((c) => needsConfirmation(c.name));
+		if (risky.length > 0) {
+			return { kind: 'confirm', calls: risky, resolved };
+		}
+
+		const ran: Resolved[] = [];
+		for (const call of result.calls) {
+			ran.push({
+				call,
+				result: { id: call.id, name: call.name, output: await runTool(call.name, call.input) }
 			});
 		}
-		messages.push({ role: 'user', content: results });
+		resolved = [...resolved, ...ran];
 	}
-	return 'Stopped after too many tool calls.';
+
+	return { kind: 'done', text: 'Stopped after too many tool calls.' };
+}
+
+/** Execute approved calls and hand back the results for the next pass. */
+export async function execute(calls: ToolCall[]): Promise<Resolved[]> {
+	const out: Resolved[] = [];
+	for (const call of calls) {
+		out.push({
+			call,
+			result: { id: call.id, name: call.name, output: await runTool(call.name, call.input) }
+		});
+	}
+	return out;
+}
+
+/** Feed a refusal back to the model so it can respond rather than hang. */
+export function declineAll(calls: ToolCall[]): Resolved[] {
+	return calls.map((call) => ({
+		call,
+		result: {
+			id: call.id,
+			name: call.name,
+			output:
+				'The operator declined this action. Do not retry it; ask what they would like instead.'
+		}
+	}));
 }
