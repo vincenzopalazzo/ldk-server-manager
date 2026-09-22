@@ -112,9 +112,10 @@ python server.py                 # http://127.0.0.1:8791
 ```
 
 Nothing is pasted into the browser: goose owns the credential. It uses `$XAI_API_KEY`, or the
-token written by `goose configure` -> `xai_oauth`, and **refreshes an expiring X subscription
-token itself** — the sidecar re-reads the token file on every request, so a long browser
-session keeps working. That is the main reason to prefer it over the direct provider below.
+token written by `goose configure` -> `xai_oauth`, and **renews an expiring X subscription
+token** — before a request when the expiry is close, and again if xAI rejects the token anyway
+(the recorded expiry is not reliable on its own), retrying once. That is the main reason to
+prefer it over the direct provider below, where an expired token means pasting a new one.
 
 ### Direct xAI
 

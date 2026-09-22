@@ -12,9 +12,14 @@ It is optional. Without it the app calls xAI and Anthropic directly from the bro
 Run it when you want either of these:
 
 - **Subscription tokens that keep working.** An X subscription access token expires and the
-  browser cannot refresh it, because `auth.x.ai` sends no CORS headers. goose refreshes the
-  token and rewrites its cache; this server re-reads that file on every request, so a long
-  session keeps working without pasting a new token.
+  browser cannot renew one, because `auth.x.ai` sends no CORS headers. This server renews it:
+  before a request when the recorded expiry is close, and again if xAI rejects the token
+  anyway, then retries once. The refreshed token is written back to goose's cache in the same
+  format, atomically and owner-only.
+
+  `goose-sdk` cannot do this by itself — the X OAuth flow lives in the `goose` crate, not the
+  SDK — so the refresh is implemented here against the same token endpoint and client id goose
+  uses.
 - **Any provider goose supports**, rather than only the ones reimplemented in the app.
 
 ## Run

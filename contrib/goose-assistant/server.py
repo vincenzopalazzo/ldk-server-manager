@@ -9,9 +9,15 @@ and the reply comes back as JSON.
 
 Why bother, when the app can call xAI directly? Two reasons:
 
-  * X subscription tokens expire. goose refreshes them and rewrites its token
-    cache; this server re-reads that file on every request, so a long-lived
-    browser session keeps working without pasting anything.
+  * X subscription tokens expire, and a browser cannot renew one because
+    `auth.x.ai` sends no CORS headers. This server refreshes the token itself
+    and rewrites goose's cache, so a long-lived browser session keeps working
+    without anything being pasted.
+
+    Note that `goose-sdk` cannot do this on its own: the X OAuth flow lives in
+    the `goose` crate, not in the SDK (which depends on `goose-providers`), so
+    the refresh below is implemented here against the same endpoint and client
+    id goose uses.
   * Anything goose can reach becomes available to the assistant, not just the
     providers reimplemented in the app.
 
@@ -29,9 +35,14 @@ Token resolution, first match wins:
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import json
 import os
 import sys
+import tempfile
+import threading
+import urllib.parse
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -55,18 +66,134 @@ TOKEN_CACHE = Path(
 
 PROVIDER_CONFIG = Path(__file__).with_name("xai.json")
 
+# Same endpoint and public client id goose registers for the X sign-in.
+TOKEN_URL = "https://auth.x.ai/oauth2/token"
+CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828"
+# Renew this long before expiry so a request in flight cannot straddle it.
+REFRESH_SKEW = dt.timedelta(seconds=120)
 
-def resolve_token() -> str | None:
-    """The bearer goose should use: an API key, else the subscription token."""
-    env = os.environ.get("XAI_API_KEY", "").strip()
-    if env:
-        return env
+_refresh_lock = threading.Lock()
+
+
+def _read_cache() -> dict | None:
     try:
         data = json.loads(TOKEN_CACHE.read_text())
     except (OSError, ValueError):
         return None
-    token = data.get("access_token")
-    return token.strip() if isinstance(token, str) and token.strip() else None
+    return data if isinstance(data, dict) else None
+
+
+def _expired(data: dict) -> bool:
+    raw = data.get("expires_at")
+    if not isinstance(raw, str):
+        return False  # no expiry recorded; assume usable and let the API judge
+    try:
+        when = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return dt.datetime.now(dt.timezone.utc) + REFRESH_SKEW >= when
+
+
+def _write_cache(data: dict) -> None:
+    """Replace the cache atomically and keep it owner-only, as goose does."""
+    TOKEN_CACHE.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(TOKEN_CACHE.parent))
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as fh:
+            json.dump(data, fh)
+        os.replace(tmp, TOKEN_CACHE)
+    except BaseException:
+        os.unlink(tmp)
+        raise
+
+
+def _refresh(data: dict) -> dict | None:
+    """Exchange the refresh token for a new access token, and persist the result."""
+    refresh_token = data.get("refresh_token")
+    if not isinstance(refresh_token, str) or not refresh_token:
+        return None
+    body = urllib.parse.urlencode(
+        {
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+            "client_id": CLIENT_ID,
+        }
+    ).encode()
+    req = urllib.request.Request(
+        TOKEN_URL,
+        data=body,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            payload = json.load(resp)
+    except Exception as exc:  # network error, or the refresh token itself expired
+        print(f"token refresh failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return None
+
+    expires_in = payload.get("expires_in")
+    expires_at = dt.datetime.now(dt.timezone.utc) + dt.timedelta(
+        seconds=int(expires_in) if isinstance(expires_in, (int, float)) else 3600
+    )
+    # Keep goose's schema exactly; the server may rotate the refresh token.
+    updated = {
+        "access_token": payload["access_token"],
+        "refresh_token": payload.get("refresh_token") or refresh_token,
+        "id_token": payload.get("id_token") or data.get("id_token"),
+        "expires_at": expires_at.isoformat().replace("+00:00", "Z"),
+    }
+    _write_cache(updated)
+    print("refreshed the X access token", file=sys.stderr)
+    return updated
+
+
+def resolve_token(force_refresh: bool = False) -> str | None:
+    """The bearer goose should use: an API key, else the subscription token.
+
+    Refreshes the subscription token when it is at or near expiry, which is the
+    whole point of running this sidecar rather than pasting a token into the page.
+
+    `force_refresh` renews regardless of the recorded expiry. The recorded
+    `expires_at` cannot be trusted on its own: xAI will reject a token that the
+    cache still considers valid (a sign-in elsewhere rotates it, for instance),
+    so a rejection is the other signal worth acting on.
+    """
+    env = os.environ.get("XAI_API_KEY", "").strip()
+    if env:
+        return env
+
+    with _refresh_lock:  # one refresh at a time, not one per concurrent request
+        data = _read_cache()
+        if data is None:
+            return None
+        if force_refresh or _expired(data):
+            data = _refresh(data) or data
+        token = data.get("access_token")
+        return token.strip() if isinstance(token, str) and token.strip() else None
+
+
+# xAI does not report a bad bearer consistently: a rotated OAuth token comes back
+# as 403 "unauthenticated:bad-credentials", while a malformed one is a 400
+# "Incorrect API key provided". Both are worth one refresh-and-retry.
+_AUTH_FAILURE_MARKERS = (
+    "401",
+    "403",
+    "unauthenticated",
+    "authentication",
+    "credential",
+    "incorrect api key",
+    "invalid api key",
+    "expired",
+)
+
+
+def _is_auth_failure(exc: BaseException) -> bool:
+    text = str(exc).lower()
+    return any(marker in text for marker in _AUTH_FAILURE_MARKERS)
 
 
 def build_provider(token: str):
@@ -122,6 +249,17 @@ def to_tools(raw: list[dict]) -> list:
     ]
 
 
+async def _complete_once(token: str, payload: dict):
+    provider = build_provider(token)
+    model = goose.ProviderModelConfig(model_name=payload.get("model") or "grok-4.7")
+    return await provider.complete(
+        model,
+        payload.get("system", ""),
+        to_messages(payload.get("messages", [])),
+        to_tools(payload.get("tools", [])),
+    )
+
+
 async def complete(payload: dict) -> dict:
     token = resolve_token()
     if not token:
@@ -133,14 +271,22 @@ async def complete(payload: dict) -> dict:
             )
         }
 
-    provider = build_provider(token)
-    model = goose.ProviderModelConfig(model_name=payload.get("model") or "grok-4.7")
-    completion = await provider.complete(
-        model,
-        payload.get("system", ""),
-        to_messages(payload.get("messages", [])),
-        to_tools(payload.get("tools", [])),
-    )
+    try:
+        completion = await _complete_once(token, payload)
+    except Exception as exc:
+        if not _is_auth_failure(exc):
+            raise
+        # Rejected despite the cache thinking it was fine: renew and try once more.
+        print("credential rejected; forcing a refresh", file=sys.stderr)
+        renewed = resolve_token(force_refresh=True)
+        if not renewed or renewed == token:
+            return {
+                "error": (
+                    "xAI rejected the credential and it could not be renewed. "
+                    "Sign in again with `goose configure` (xai_oauth), or set XAI_API_KEY."
+                )
+            }
+        completion = await _complete_once(renewed, payload)
 
     text_parts: list[str] = []
     calls: list[dict] = []
