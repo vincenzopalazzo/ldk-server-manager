@@ -56,6 +56,25 @@ Any other gRPC-Web capable proxy (e.g. `grpcwebproxy`, or a reverse proxy with t
 filter) works as long as it forwards the `x-auth` header unchanged and exposes the
 `grpc-status` / `grpc-message` headers to the browser.
 
+## Design
+
+The UI is implemented 1-to-1 from the Claude Design project "LDK Server UI"
+(`LDK Server UI.dc.html`). `packages/ui/src/lib/styles/tokens.css` carries the design tokens
+verbatim, and every component keeps the sizes, paddings and colors of its counterpart.
+
+Where the design showed mock data that the ldk-server API cannot provide, the implementation
+binds the closest real signal instead:
+
+| Design                              | Implementation                                                          |
+| ----------------------------------- | ----------------------------------------------------------------------- |
+| "2 UTXOs · all confirmed"           | spendable balance and anchor reserve from `GetBalances`                 |
+| "Fees earned · 30d" sparkline       | computed from `ListForwardedPayments`; falls back to all-time stats     |
+| Peer aliases                        | resolved from the gossip graph (`GraphGetNode`), cached per node        |
+| Alias search when opening a channel | lookup by node id (the API has no alias index)                          |
+| "Buy from an LSP" (LSPS1 quote)     | LSPS2 just-in-time channel invoice (`Bolt11ReceiveViaJitChannel`)       |
+| Settings "Version" / "Rotate key"   | best block, sync timestamps, and the bridge connection form             |
+| Assistant (`window.claude`)         | Claude API called from the browser with a key stored only locally        |
+
 ## Security notes
 
 - Treat the API key like a wallet password: anyone holding it can move funds.
