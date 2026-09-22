@@ -1,0 +1,16 @@
+{
+  "name": "ldk-server-manager",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.28.2",
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm -r build",
+    "check": "pnpm -r check",
+    "lint": "pnpm -r lint",
+    "format": "pnpm -r format",
+    "test": "pnpm -r test",
+    "generate": "pnpm --filter @ldk-server-manager/client generate"
+  }
+}

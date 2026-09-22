@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @ldk-server-manager/client generate
+      - run: git diff --exit-code -- packages/client/src/gen
+      - run: pnpm -r check
+      - run: pnpm -r lint
+      - run: pnpm --filter @ldk-server-manager/client test
+      - run: pnpm --filter web exec vitest --run --project server
+      - run: pnpm -r build

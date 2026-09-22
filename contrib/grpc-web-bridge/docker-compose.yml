@@ -1,0 +1,16 @@
+services:
+  grpc-web-bridge:
+    image: envoyproxy/envoy:v1.32-latest
+    command: >
+      sh -c "envsubst < /etc/envoy/envoy.template.yaml > /tmp/envoy.yaml
+      && envoy -c /tmp/envoy.yaml"
+    environment:
+      LDK_SERVER_HOST: ${LDK_SERVER_HOST:-host.docker.internal}
+      LDK_SERVER_PORT: ${LDK_SERVER_PORT:-3536}
+    volumes:
+      - ./envoy.yaml:/etc/envoy/envoy.template.yaml:ro
+      - ./ldk-server-tls.crt:/etc/envoy/ldk-server-tls.crt:ro
+    ports:
+      - "8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
