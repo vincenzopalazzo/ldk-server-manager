@@ -56,6 +56,14 @@ Any other gRPC-Web capable proxy (e.g. `grpcwebproxy`, or a reverse proxy with t
 filter) works as long as it forwards the `x-auth` header unchanged and exposes the
 `grpc-status` / `grpc-message` headers to the browser.
 
+The bridge is a workaround, not a design goal. Three things in ldk-server make it necessary:
+the gRPC status is delivered in HTTP/2 trailers, which browsers cannot read; the server
+rejects the `application/grpc-web+proto` content type; and it sends no CORS headers. If
+ldk-server accepted gRPC-Web directly, this app would talk to a node with no proxy in
+between and no code change here, because the request bytes the browser signs are identical
+either way. That is proposed upstream in
+[lightningdevkit/ldk-server#296](https://github.com/lightningdevkit/ldk-server/issues/296).
+
 ## Design
 
 The UI is implemented 1-to-1 from the Claude Design project "LDK Server UI"
