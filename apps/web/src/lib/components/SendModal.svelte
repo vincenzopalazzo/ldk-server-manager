@@ -21,6 +21,8 @@
 	}
 
 	let stage = $state<'idle' | 'decoded' | 'paying' | 'done'>('idle');
+	/** How the payment actually ended. 'pending' means still in flight, not sent. */
+	let outcome = $state<'succeeded' | 'pending'>('succeeded');
 	let input = $state('');
 	let amountInput = $state('');
 	let decoded = $state<Decoded | null>(null);
@@ -114,7 +116,7 @@
 				});
 				if (r.kind !== 'txid') paymentId = r.id;
 			}
-			if (paymentId) await waitForPayment(paymentId);
+			outcome = paymentId ? await waitForPayment(paymentId) : 'succeeded';
 			doneAmount = `−${prefs.withUnit(amount)}`;
 			stage = 'done';
 			void payments.refresh();
@@ -125,17 +127,22 @@
 		}
 	}
 
-	/** Poll the payment until it leaves PENDING (up to ~30s). Throws on failure. */
-	async function waitForPayment(paymentId: string) {
+	/**
+	 * Poll until the payment leaves PENDING, for up to ~60s. Returns how it ended and
+	 * throws if the node reported failure. A payment that is still in flight when we
+	 * stop watching is reported as 'pending' — never as sent, because a BOLT12 payment
+	 * over blinded paths can still fail after this point.
+	 */
+	async function waitForPayment(paymentId: string): Promise<'succeeded' | 'pending'> {
 		const api = requireClient().api;
-		for (let i = 0; i < 30; i++) {
+		for (let i = 0; i < 60; i++) {
 			await new Promise((r) => setTimeout(r, 1000));
 			const res = await api.getPaymentDetails({ paymentId });
 			const st = res.payment?.status;
-			if (st === PaymentStatus.SUCCEEDED) return;
+			if (st === PaymentStatus.SUCCEEDED) return 'succeeded';
 			if (st === PaymentStatus.FAILED) throw new Error('Payment failed');
 		}
-		showToast('Payment still pending — check the payments list');
+		return 'pending';
 	}
 
 	const rows = $derived(
@@ -182,9 +189,16 @@
 		</div>
 	{:else if stage === 'done'}
 		<div class="center pad26">
-			<span class="check">✓</span>
-			<span class="doneTitle">Payment sent</span>
+			<span class="check" class:pending={outcome === 'pending'}>
+				{outcome === 'pending' ? '◷' : '✓'}
+			</span>
+			<span class="doneTitle">{outcome === 'pending' ? 'Payment in flight' : 'Payment sent'}</span>
 			<span class="doneAmt">{doneAmount}</span>
+			{#if outcome === 'pending'}
+				<span class="doneNote">
+					Still pending after a minute. It may still succeed or fail — follow it in Payments.
+				</span>
+			{/if}
 			<div class="gap6">
 				<Button variant="soft" size="lg" onclick={() => ui.close()}>Done</Button>
 			</div>
@@ -244,5 +258,16 @@
 		font-family: var(--font-mono);
 		font-size: 13px;
 		color: var(--muted);
+	}
+	.doneNote {
+		font-size: 12.5px;
+		color: var(--muted);
+		text-align: center;
+		max-width: 300px;
+		line-height: 1.5;
+	}
+	.check.pending {
+		background: var(--amberbg);
+		color: var(--amber);
 	}
 </style>
