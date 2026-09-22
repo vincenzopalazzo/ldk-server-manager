@@ -1,6 +1,6 @@
 import type { ToolSpec } from '../tools';
 
-export type ProviderId = 'anthropic' | 'xai';
+export type ProviderId = 'anthropic' | 'xai' | 'goose';
 
 /** A turn in the conversation as the app stores it, independent of any provider's wire format. */
 export interface ChatMessage {

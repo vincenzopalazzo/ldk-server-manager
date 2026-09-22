@@ -1,9 +1,10 @@
 import { browser } from '$app/environment';
 import { anthropicProvider } from './providers/anthropic';
 import { xaiProvider } from './providers/xai';
+import { gooseProvider } from './providers/goose';
 import type { Provider, ProviderId } from './providers/types';
 
-export const PROVIDERS: Provider[] = [xaiProvider, anthropicProvider];
+export const PROVIDERS: Provider[] = [gooseProvider, xaiProvider, anthropicProvider];
 
 export const providerById = (id: ProviderId): Provider =>
 	PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0];
@@ -18,13 +19,16 @@ interface Stored {
 }
 
 function load(): Stored {
-	const fallback: Stored = { provider: 'xai', model: xaiProvider.defaultModel, tokens: {} };
+	const fallback: Stored = { provider: 'goose', model: gooseProvider.defaultModel, tokens: {} };
 	if (!browser) return fallback;
 	try {
 		const raw = localStorage.getItem(KEY);
 		if (!raw) return fallback;
 		const p = JSON.parse(raw) as Partial<Stored>;
-		const provider = p.provider === 'anthropic' || p.provider === 'xai' ? p.provider : 'xai';
+		const known: ProviderId[] = ['goose', 'xai', 'anthropic'];
+		const provider = known.includes(p.provider as ProviderId)
+			? (p.provider as ProviderId)
+			: 'goose';
 		return {
 			provider,
 			model: typeof p.model === 'string' ? p.model : providerById(provider).defaultModel,
@@ -40,8 +44,8 @@ function load(): Stored {
  * tokens are never sent anywhere except to the provider the operator picked.
  */
 class AssistantConfig {
-	providerId = $state<ProviderId>('xai');
-	model = $state<string>(xaiProvider.defaultModel);
+	providerId = $state<ProviderId>('goose');
+	model = $state<string>(gooseProvider.defaultModel);
 	private tokens = $state<Partial<Record<ProviderId, string>>>({});
 
 	constructor() {
@@ -60,8 +64,9 @@ class AssistantConfig {
 		return this.tokens[this.providerId] ?? '';
 	}
 
+	/** goose holds its own credential in the sidecar, so it is ready with nothing pasted. */
 	get isReady(): boolean {
-		return this.token.length > 0;
+		return this.providerId === 'goose' || this.token.length > 0;
 	}
 
 	setProvider(id: ProviderId) {
