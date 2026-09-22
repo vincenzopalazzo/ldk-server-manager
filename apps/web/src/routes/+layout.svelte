@@ -1,11 +1,99 @@
 <script lang="ts">
-	import favicon from '$lib/assets/favicon.svg';
+	import '@ldk-server-manager/ui/styles.css';
+	import type { Snippet } from 'svelte';
+	import { Toast } from '@ldk-server-manager/ui';
+	import AppHeader from '$lib/components/AppHeader.svelte';
+	import ConnectCard from '$lib/components/ConnectCard.svelte';
+	import SendModal from '$lib/components/SendModal.svelte';
+	import ReceiveModal from '$lib/components/ReceiveModal.svelte';
+	import LiquidityModal from '$lib/components/LiquidityModal.svelte';
+	import AssistantDrawer from '$lib/components/AssistantDrawer.svelte';
+	import { connection } from '$lib/config/connection.svelte';
+	import { balances, channels, nodeInfo, peers, resetAll } from '$lib/state/node.svelte';
+	import { payments } from '$lib/state/payments.svelte';
+	import { feeSummary, forwardingStats } from '$lib/state/forwarding.svelte';
+	import { eventFeed } from '$lib/state/events.svelte';
+	import { aliases } from '$lib/state/aliases.svelte';
+	import { toast } from '$lib/state/toast.svelte';
+	import { ui } from '$lib/state/ui.svelte';
 
-	let { children } = $props();
+	let { children }: { children: Snippet } = $props();
+
+	// Poll authoritative state while connected and keep the live event stream open.
+	$effect(() => {
+		if (!connection.isConfigured) {
+			resetAll();
+			eventFeed.stop();
+			return;
+		}
+		const stops = [
+			nodeInfo.poll(30_000),
+			balances.poll(15_000),
+			channels.poll(15_000),
+			peers.poll(30_000)
+		];
+		void payments.refresh();
+		void feeSummary.refresh();
+		eventFeed.start();
+		const off = eventFeed.onEvent((env) => {
+			switch (env.event.case) {
+				case 'paymentReceived':
+				case 'paymentSuccessful':
+				case 'paymentFailed':
+				case 'paymentClaimable':
+					void payments.refresh();
+					void balances.refresh();
+					break;
+				case 'paymentForwarded':
+					void feeSummary.refresh();
+					void forwardingStats.refresh();
+					break;
+				default:
+					void channels.refresh();
+					void balances.refresh();
+			}
+		});
+		return () => {
+			stops.forEach((s) => s());
+			off();
+			eventFeed.stop();
+			aliases.clear();
+		};
+	});
 </script>
 
-<svelte:head>
-	<link rel="icon" href={favicon} />
-</svelte:head>
+<div class="root">
+	<AppHeader />
+	<main>
+		{#if connection.isConfigured}
+			{@render children()}
+		{:else}
+			<ConnectCard />
+		{/if}
+	</main>
 
-{@render children()}
+	{#if ui.modal === 'send'}<SendModal />{/if}
+	{#if ui.modal === 'receive'}<ReceiveModal />{/if}
+	{#if ui.modal === 'channel'}<LiquidityModal />{/if}
+	{#if ui.assistantOpen}<AssistantDrawer />{/if}
+	<Toast message={toast.message} />
+</div>
+
+<style>
+	.root {
+		font-family: var(--font-sans);
+		color: var(--ink);
+		background: var(--bg);
+		min-height: 100vh;
+		display: flex;
+		flex-direction: column;
+	}
+	main {
+		width: 100%;
+		max-width: 1200px;
+		margin: 0 auto;
+		padding: 24px;
+		box-sizing: border-box;
+		flex: 1;
+	}
+</style>

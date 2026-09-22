@@ -38,7 +38,8 @@
 		"vitest-browser-svelte": "^2.1.1"
 	},
 	"dependencies": {
-		"@ldk-server-manager/ui": "workspace:*",
-		"@ldk-server-manager/client": "workspace:*"
+		"@anthropic-ai/sdk": "^0.127.0",
+		"@ldk-server-manager/client": "workspace:*",
+		"@ldk-server-manager/ui": "workspace:*"
 	}
 }

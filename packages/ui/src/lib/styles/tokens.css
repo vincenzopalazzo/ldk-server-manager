@@ -1,0 +1,92 @@
+/* Design tokens extracted from "LDK Server UI.dc.html". Values are kept verbatim. */
+:root {
+	--bg: #efeee9;
+	--card: #ffffff;
+	--ink: #161613;
+	--muted: #6e6d63;
+	--line: #e5e3d8;
+	--soft: #f5f4ef;
+	--border: #d6d4c8;
+	--head: #161613;
+	--headink: #efeee9;
+	--chip: #2a2a24;
+	--shadow: 0 1px 2px rgba(22, 22, 19, 0.06);
+	--acc: #ffd200;
+	--green: #1a7f4e;
+	--greenbg: #e3f5ec;
+	--red: #c43c36;
+	--redbg: #fbe9e7;
+	--amber: #8a6d00;
+	--amberbg: #fff3c2;
+	--nav-inactive: #9b9a8e;
+	--live: #3dd68c;
+	--live-red: #f0564a;
+	--font-sans: 'Space Grotesk', sans-serif;
+	--font-mono: 'IBM Plex Mono', monospace;
+}
+body.dark {
+	--bg: #131310;
+	--card: #1c1b16;
+	--ink: #edebe0;
+	--muted: #9a9888;
+	--line: #2a2921;
+	--soft: #221f19;
+	--border: #3a382e;
+	--head: #0d0d0b;
+	--headink: #edebe0;
+	--chip: #26251f;
+	--shadow: none;
+	--green: #3dd68c;
+	--greenbg: #1b3226;
+	--red: #f0564a;
+	--redbg: #3a201c;
+	--amber: #ffd200;
+	--amberbg: #3a3210;
+}
+body {
+	margin: 0;
+	background: var(--bg);
+	color: var(--ink);
+	font-family: var(--font-sans);
+}
+a {
+	color: var(--ink);
+	text-decoration: underline;
+	text-decoration-color: var(--border);
+}
+a:hover {
+	text-decoration-color: var(--ink);
+}
+input,
+textarea,
+select,
+button {
+	font-family: inherit;
+}
+.mono {
+	font-family: var(--font-mono);
+}
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+@keyframes pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.35;
+	}
+}
+@keyframes slidein {
+	from {
+		transform: translateX(30px);
+		opacity: 0;
+	}
+	to {
+		transform: none;
+		opacity: 1;
+	}
+}
