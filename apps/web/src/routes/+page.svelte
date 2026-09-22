@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { Button, Card, Dot, Sparkline, StatCard } from '@ldk-server-manager/ui';
 	import ChannelRow from '$lib/components/ChannelRow.svelte';
 	import { balances, channels, nodeInfo } from '$lib/state/node.svelte';
@@ -86,11 +87,11 @@
 
 	<div class="grid">
 		<Card title="Channels">
-			{#snippet actions()}<a href="/channels" class="viewall">View all</a>{/snippet}
+			{#snippet actions()}<a href={resolve('/channels')} class="viewall">View all</a>{/snippet}
 			{#each chList.slice(0, 4) as ch (ch.channelId)}
 				<ChannelRow
 					channel={ch}
-					onclick={() => ((ui.selectedChannelId = ch.channelId), goto('/channels'))}
+					onclick={() => ((ui.selectedChannelId = ch.channelId), goto(resolve('/channels')))}
 				/>
 			{:else}
 				<div class="empty">

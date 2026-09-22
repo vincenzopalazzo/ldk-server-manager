@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { Network } from '@ldk-server-manager/client';
 	import { Chip } from '@ldk-server-manager/ui';
 	import { prefs } from '$lib/state/prefs.svelte';
@@ -8,7 +9,10 @@
 	import { nodeInfo } from '$lib/state/node.svelte';
 	import { connection } from '$lib/config/connection.svelte';
 
-	const NAV = [
+	const NAV: {
+		label: string;
+		href: '/' | '/channels' | '/payments' | '/peers' | '/forwarding' | '/graph' | '/settings';
+	}[] = [
 		{ label: 'Dashboard', href: '/' },
 		{ label: 'Channels', href: '/channels' },
 		{ label: 'Payments', href: '/payments' },
@@ -48,7 +52,7 @@
 </script>
 
 <header>
-	<button class="brand" onclick={() => goto('/')}>
+	<button class="brand" onclick={() => goto(resolve('/'))}>
 		<span class="logo">
 			<svg width="18" height="18" viewBox="0 0 26 26">
 				<path
@@ -65,7 +69,7 @@
 	</button>
 	<nav>
 		{#each NAV as item (item.href)}
-			<a href={item.href} class:active={isActive(item.href)}>{item.label}</a>
+			<a href={resolve(item.href)} class:active={isActive(item.href)}>{item.label}</a>
 		{/each}
 	</nav>
 	<div class="right">
