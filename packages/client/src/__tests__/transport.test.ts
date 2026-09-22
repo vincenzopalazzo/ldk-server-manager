@@ -26,7 +26,10 @@ describe('LdkServerClient', () => {
 				seen = { url: String(url), init: init! };
 				const msg = create(GetNodeInfoResponseSchema, { nodeId: '02abc' });
 				const trailer = new TextEncoder().encode('grpc-status: 0\r\n');
-				return grpcWebResponse([encodeFrame(toBinary(GetNodeInfoResponseSchema, msg)), encodeFrame(trailer, FLAG_TRAILERS)]);
+				return grpcWebResponse([
+					encodeFrame(toBinary(GetNodeInfoResponseSchema, msg)),
+					encodeFrame(trailer, FLAG_TRAILERS)
+				]);
 			}
 		});
 		const info = await client.api.getNodeInfo();

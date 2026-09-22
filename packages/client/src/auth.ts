@@ -46,7 +46,11 @@ export async function computeAuthHmac(apiKey: string, timestampSecs: number, bod
 }
 
 /** Build the full `x-auth` header value for a request body. */
-export async function buildAuthHeader(apiKey: string, body: Uint8Array, now: () => number = () => Date.now()): Promise<string> {
+export async function buildAuthHeader(
+	apiKey: string,
+	body: Uint8Array,
+	now: () => number = () => Date.now()
+): Promise<string> {
 	const timestamp = Math.floor(now() / 1000);
 	const hmac = await computeAuthHmac(apiKey, timestamp, body);
 	return `HMAC ${timestamp}:${hmac}`;

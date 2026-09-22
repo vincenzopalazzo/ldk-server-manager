@@ -2,8 +2,11 @@ import {
 	create,
 	ChannelConfigSchema,
 	RouteParametersConfigSchema,
-	type ChannelConfig
+	type MessageInitShape
 } from '@ldk-server-manager/client';
+
+/** Plain-object initializer for a channel config (all fields optional). */
+export type ChannelConfigInit = MessageInitShape<typeof ChannelConfigSchema>;
 import { requireClient } from '$lib/api/client.svelte';
 import { balances, channels, peers } from '$lib/state/node.svelte';
 import { payments } from '$lib/state/payments.svelte';

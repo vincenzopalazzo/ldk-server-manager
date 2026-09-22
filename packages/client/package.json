@@ -1,33 +1,34 @@
 {
-  "name": "@ldk-server-manager/client",
-  "version": "0.1.0",
-  "description": "Browser-side TypeScript client for ldk-server (gRPC-Web + HMAC auth)",
-  "type": "module",
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
-  "exports": {
-    ".": "./src/index.ts",
-    "./gen/*": "./src/gen/*"
-  },
-  "scripts": {
-    "generate": "buf generate",
-    "check": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest --run",
-    "lint": "prettier --check . && eslint ."
-  },
-  "dependencies": {
-    "@bufbuild/protobuf": "^2.4.0"
-  },
-  "devDependencies": {
-    "@bufbuild/buf": "^1.50.0",
-    "@bufbuild/protoc-gen-es": "^2.4.0",
-    "@eslint/js": "^10.0.1",
-    "@types/node": "^22.20.4",
-    "eslint": "^10.4.1",
-    "globals": "^17.6.0",
-    "prettier": "^3.8.3",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.60.1",
-    "vitest": "^4.1.8"
-  }
+	"name": "@ldk-server-manager/client",
+	"version": "0.1.0",
+	"description": "Browser-side TypeScript client for ldk-server (gRPC-Web + HMAC auth)",
+	"type": "module",
+	"main": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": "./src/index.ts",
+		"./gen/*": "./src/gen/*"
+	},
+	"scripts": {
+		"generate": "buf generate",
+		"check": "tsc --noEmit -p tsconfig.json",
+		"test": "vitest --run",
+		"lint": "prettier --check . && eslint .",
+		"format": "prettier --write ."
+	},
+	"dependencies": {
+		"@bufbuild/protobuf": "^2.4.0"
+	},
+	"devDependencies": {
+		"@bufbuild/buf": "^1.50.0",
+		"@bufbuild/protoc-gen-es": "^2.4.0",
+		"@eslint/js": "^10.0.1",
+		"@types/node": "^22.20.4",
+		"eslint": "^10.4.1",
+		"globals": "^17.6.0",
+		"prettier": "^3.8.3",
+		"typescript": "^6.0.3",
+		"typescript-eslint": "^8.60.1",
+		"vitest": "^4.1.8"
+	}
 }

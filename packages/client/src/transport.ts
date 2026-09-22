@@ -90,7 +90,10 @@ export class GrpcWebTransport {
 	}
 
 	/** Perform a unary RPC. */
-	async unary<M extends DescMethodUnary>(method: M, input: MessageInitShape<M['input']>): Promise<MessageShape<M['output']>> {
+	async unary<M extends DescMethodUnary>(
+		method: M,
+		input: MessageInitShape<M['input']>
+	): Promise<MessageShape<M['output']>> {
 		const controller = new AbortController();
 		const timer = setTimeout(() => controller.abort(), this.timeoutMs);
 		try {
