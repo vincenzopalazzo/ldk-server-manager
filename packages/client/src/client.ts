@@ -15,7 +15,7 @@ type UnaryFn<K extends UnaryMethodNames> = (
 /** Strongly-typed API surface: one async method per unary RPC, camelCased. */
 export type LdkServerApi = { [K in UnaryMethodNames]: UnaryFn<K> };
 
-export interface LdkServerClientOptions extends TransportOptions {}
+export type LdkServerClientOptions = TransportOptions;
 
 /**
  * High-level ldk-server client. All unary RPCs are exposed as methods
