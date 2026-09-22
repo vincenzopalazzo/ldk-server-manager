@@ -5,10 +5,10 @@
 # Request body bytes are passed through unchanged, so the HMAC signature the
 # browser computes over the gRPC frame stays valid.
 #
-# Usage:
-#   1. Copy ldk-server's self-signed certificate to ./ldk-server-tls.crt
+# Usage (from the repository root, see docker-compose.yml there):
+#   1. Copy ldk-server's self-signed certificate to contrib/grpc-web-bridge/ldk-server-tls.crt
 #      (found at <storage_dir>/tls.crt).
-#   2. docker compose up
+#   2. LDK_SERVER_HOST=<node host> docker compose up -d
 #   3. Point the web UI at http://localhost:8080 (or put this behind your own TLS).
 static_resources:
   listeners:

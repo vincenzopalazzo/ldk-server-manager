@@ -1,0 +1,41 @@
+# Everything the browser app needs beside the node itself.
+#
+#   grpc-web-bridge  Envoy: translates the page's gRPC-Web into ldk-server's native gRPC.
+#   goose-gateway    OpenAI-compatible endpoint backed by the goose SDK's xai_oauth provider,
+#                    so the assistant can use an X subscription and goose keeps the token fresh.
+#
+# Usage:
+#   cp /path/to/ldk-server/tls.crt contrib/grpc-web-bridge/ldk-server-tls.crt
+#   LDK_SERVER_HOST=<node host> LDK_SERVER_PORT=3536 docker compose up -d
+#
+# Then point the app at http://localhost:8080 (node) and http://localhost:8791/v1 (assistant).
+services:
+  grpc-web-bridge:
+    image: envoyproxy/envoy:v1.32-latest
+    command:
+      - /bin/sh
+      - -c
+      - |
+        sed -e "s|LDK_SERVER_HOST_PLACEHOLDER|$${LDK_SERVER_HOST}|g" \
+            -e "s|LDK_SERVER_PORT_PLACEHOLDER|$${LDK_SERVER_PORT}|g" \
+            /etc/envoy/envoy.template.yaml > /tmp/envoy.yaml
+        exec envoy -c /tmp/envoy.yaml
+    environment:
+      LDK_SERVER_HOST: ${LDK_SERVER_HOST:-host.docker.internal}
+      LDK_SERVER_PORT: ${LDK_SERVER_PORT:-3536}
+    volumes:
+      - ./contrib/grpc-web-bridge/envoy.yaml:/etc/envoy/envoy.template.yaml:ro
+      - ./contrib/grpc-web-bridge/ldk-server-tls.crt:/etc/envoy/ldk-server-tls.crt:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  goose-gateway:
+    build: ./contrib/goose-gateway
+    # goose's config dir on the host, mounted read-write: the provider rewrites the token
+    # cache when it refreshes. Override GOOSE_CONFIG_DIR if yours is elsewhere.
+    volumes:
+      - ${GOOSE_CONFIG_DIR:-~/.config/goose}:/goose/config
+    ports:
+      - "127.0.0.1:8791:8791"

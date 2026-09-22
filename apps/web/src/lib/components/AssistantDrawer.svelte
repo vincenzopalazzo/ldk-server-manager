@@ -14,6 +14,7 @@
 
 	let input = $state('');
 	let tokenInput = $state('');
+	let hostInput = $state('');
 	let settingsOpen = $state(false);
 	let body: HTMLDivElement | undefined = $state();
 
@@ -31,15 +32,26 @@
 		void chat.send(text);
 	}
 
-	function saveToken() {
-		assistantConfig.setToken(tokenInput);
+	function saveSettings() {
+		// Token: an entry replaces the stored one; leaving it blank keeps it (a blank on a
+		// provider that needs no token is the normal case). Host: blank reverts to the default.
+		if (tokenInput.trim()) assistantConfig.setToken(tokenInput);
+		assistantConfig.setHost(hostInput);
 		tokenInput = '';
-		showToast(assistantConfig.isReady ? 'Assistant token saved' : 'Assistant token removed');
+		showToast('Assistant settings saved');
+	}
+
+	function forgetToken() {
+		assistantConfig.clearToken();
+		tokenInput = '';
+		showToast('Assistant token removed');
 	}
 
 	function pickProvider(id: ProviderId) {
 		assistantConfig.setProvider(id);
 		tokenInput = '';
+		hostInput =
+			assistantConfig.host === assistantConfig.provider.defaultHost ? '' : assistantConfig.host;
 	}
 
 	// Keep the transcript pinned to the newest message.
@@ -94,13 +106,23 @@
 				</select>
 			</div>
 			<div class="row">
-				<Input
-					bind:value={tokenInput}
-					mono
-					type="password"
-					placeholder={assistantConfig.isReady ? 'replace token' : 'token'}
-				/>
-				<Button variant="dark" size="lg" onclick={saveToken}>Save</Button>
+				<Input bind:value={hostInput} mono placeholder={provider.defaultHost ?? 'host'} />
+			</div>
+			{#if !provider.tokenOptional}
+				<div class="row">
+					<Input
+						bind:value={tokenInput}
+						mono
+						type="password"
+						placeholder={assistantConfig.token ? 'replace token' : 'token'}
+					/>
+					{#if assistantConfig.token}
+						<Button variant="outline" size="lg" onclick={forgetToken}>Forget</Button>
+					{/if}
+				</div>
+			{/if}
+			<div class="row">
+				<Button variant="dark" size="lg" onclick={saveSettings}>Save</Button>
 			</div>
 			<div class="hint">{provider.credentialHint}</div>
 		</div>

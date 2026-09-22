@@ -20,9 +20,7 @@ import {
  */
 const DEFAULT_HOST = 'https://api.x.ai/v1';
 
-/** Mirrors goose's XAI_HOST config key; also lets tests point at a local server. */
-export let xaiHost = DEFAULT_HOST;
-export const setXaiHost = (h: string) => (xaiHost = h || DEFAULT_HOST);
+export { DEFAULT_HOST as XAI_DEFAULT_HOST };
 
 const MODELS = [
 	'grok-4.7',
@@ -81,24 +79,37 @@ export const xaiProvider: Provider = {
 		'`jq -r .access_token ~/.config/goose/xai_oauth/tokens.json`. ' +
 		'Subscription tokens expire, so paste a fresh one when Grok starts rejecting requests.',
 
-	async send(turn, { token, model }): Promise<TurnResult> {
-		const res = await fetch(`${xaiHost}/chat/completions`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-			body: JSON.stringify({
-				model,
-				messages: buildMessages(turn),
-				tools: turn.tools.map((t) => ({
-					type: 'function',
-					function: { name: t.name, description: t.description, parameters: t.parameters }
-				})),
-				tool_choice: 'auto'
-			})
-		});
+	defaultHost: DEFAULT_HOST,
+
+	async send(turn, { token, model, host }): Promise<TurnResult> {
+		const base = (host || DEFAULT_HOST).replace(/\/+$/, '');
+		let res: Response;
+		try {
+			res = await fetch(`${base}/chat/completions`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+				body: JSON.stringify({
+					model,
+					messages: buildMessages(turn),
+					tools: turn.tools.map((t) => ({
+						type: 'function',
+						function: { name: t.name, description: t.description, parameters: t.parameters }
+					})),
+					tool_choice: 'auto'
+				})
+			});
+		} catch {
+			throw new ProviderAuthError(`Could not reach ${base}. Is the endpoint running?`);
+		}
 
 		if (res.status === 401 || res.status === 403) {
+			// A gateway reports why in the OpenAI error shape; xAI itself does not say much.
+			const detail = (await res.json().catch(() => null)) as {
+				error?: { message?: string };
+			} | null;
 			throw new ProviderAuthError(
-				'xAI rejected the token. An X subscription token expires after a while — get a fresh one and save it again.'
+				detail?.error?.message ??
+					'xAI rejected the token. An X subscription token expires after a while — get a fresh one and save it again.'
 			);
 		}
 		if (!res.ok) {

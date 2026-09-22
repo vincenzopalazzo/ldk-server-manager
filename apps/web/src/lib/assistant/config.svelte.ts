@@ -16,10 +16,17 @@ interface Stored {
 	model: string;
 	/** Credential per provider, so switching back does not lose the other one. */
 	tokens: Partial<Record<ProviderId, string>>;
+	/** Host override per provider (e.g. the goose gateway moved to another port). */
+	hosts: Partial<Record<ProviderId, string>>;
 }
 
 function load(): Stored {
-	const fallback: Stored = { provider: 'goose', model: gooseProvider.defaultModel, tokens: {} };
+	const fallback: Stored = {
+		provider: 'goose',
+		model: gooseProvider.defaultModel,
+		tokens: {},
+		hosts: {}
+	};
 	if (!browser) return fallback;
 	try {
 		const raw = localStorage.getItem(KEY);
@@ -32,7 +39,8 @@ function load(): Stored {
 		return {
 			provider,
 			model: typeof p.model === 'string' ? p.model : providerById(provider).defaultModel,
-			tokens: typeof p.tokens === 'object' && p.tokens !== null ? p.tokens : {}
+			tokens: typeof p.tokens === 'object' && p.tokens !== null ? p.tokens : {},
+			hosts: typeof p.hosts === 'object' && p.hosts !== null ? p.hosts : {}
 		};
 	} catch {
 		return fallback;
@@ -47,12 +55,14 @@ class AssistantConfig {
 	providerId = $state<ProviderId>('goose');
 	model = $state<string>(gooseProvider.defaultModel);
 	private tokens = $state<Partial<Record<ProviderId, string>>>({});
+	private hosts = $state<Partial<Record<ProviderId, string>>>({});
 
 	constructor() {
 		const s = load();
 		this.providerId = s.provider;
 		this.model = s.model;
 		this.tokens = s.tokens;
+		this.hosts = s.hosts;
 	}
 
 	get provider(): Provider {
@@ -64,9 +74,23 @@ class AssistantConfig {
 		return this.tokens[this.providerId] ?? '';
 	}
 
-	/** goose holds its own credential in the sidecar, so it is ready with nothing pasted. */
+	/** Effective host for the active provider: the override, else the provider's default. */
+	get host(): string {
+		return this.hosts[this.providerId] || this.provider.defaultHost || '';
+	}
+
+	/** A provider whose endpoint holds the credential is ready with nothing pasted. */
 	get isReady(): boolean {
-		return this.providerId === 'goose' || this.token.length > 0;
+		return this.provider.tokenOptional === true || this.token.length > 0;
+	}
+
+	setHost(value: string) {
+		const v = value.trim();
+		const next = { ...this.hosts };
+		if (v) next[this.providerId] = v;
+		else delete next[this.providerId];
+		this.hosts = next;
+		this.persist();
 	}
 
 	setProvider(id: ProviderId) {
@@ -96,7 +120,12 @@ class AssistantConfig {
 	private persist() {
 		if (!browser) return;
 		try {
-			const out: Stored = { provider: this.providerId, model: this.model, tokens: this.tokens };
+			const out: Stored = {
+				provider: this.providerId,
+				model: this.model,
+				tokens: this.tokens,
+				hosts: this.hosts
+			};
 			localStorage.setItem(KEY, JSON.stringify(out));
 		} catch {
 			/* storage unavailable; keep in memory for this session */

@@ -75,6 +75,7 @@ class Chat {
 				provider: assistantConfig.provider,
 				token: assistantConfig.token,
 				model: assistantConfig.model,
+				host: assistantConfig.host,
 				history: this.messages,
 				resolved
 			});

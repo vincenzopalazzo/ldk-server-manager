@@ -51,7 +51,11 @@ export interface Provider {
 	models: readonly string[];
 	/** Where to get a credential, shown under the token field. */
 	credentialHint: string;
-	send(turn: Turn, opts: { token: string; model: string }): Promise<TurnResult>;
+	/** Base URL the provider talks to. Presets override it; the operator can too. */
+	defaultHost?: string;
+	/** True when the endpoint holds the credential itself and nothing must be pasted. */
+	tokenOptional?: boolean;
+	send(turn: Turn, opts: { token: string; model: string; host?: string }): Promise<TurnResult>;
 }
 
 /** Raised when the credential is missing, wrong or expired. */

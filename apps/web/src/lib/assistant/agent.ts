@@ -20,6 +20,7 @@ export interface RunOptions {
 	provider: Provider;
 	token: string;
 	model: string;
+	host?: string;
 	history: ChatMessage[];
 	/** Tool calls already executed or approved in this exchange. */
 	resolved?: Resolved[];
@@ -33,12 +34,12 @@ export interface RunOptions {
  * continues, which keeps "create an invoice for 50k" a single round trip.
  */
 export async function run(opts: RunOptions): Promise<AgentStep> {
-	const { provider, token, model, history } = opts;
+	const { provider, token, model, host, history } = opts;
 	let resolved: Resolved[] = opts.resolved ?? [];
 
 	for (let pass = 0; pass < MAX_PASSES; pass++) {
 		const turn: Turn = { system: systemPrompt(), history, tools: TOOLS, resolved };
-		const result = await provider.send(turn, { token, model });
+		const result = await provider.send(turn, { token, model, host });
 
 		if (result.calls.length === 0) {
 			return { kind: 'done', text: result.text || '(no reply)' };
