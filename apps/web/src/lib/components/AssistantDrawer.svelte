@@ -1,8 +1,11 @@
 <script lang="ts">
-	import { Button, Drawer, Input, PillTabs } from '@ldk-server-manager/ui';
+	import { untrack } from 'svelte';
+	import { Button, Dot, Drawer, Input, PillTabs } from '@ldk-server-manager/ui';
 	import { ui } from '$lib/state/ui.svelte';
 	import { chat } from '$lib/assistant/chat.svelte';
 	import { assistantConfig, PROVIDERS } from '$lib/assistant/config.svelte';
+	import { gatewayHealth, watchGateway } from '$lib/assistant/gateway.svelte';
+	import { describeGateway } from '$lib/assistant/gatewayStatus';
 	import type { ProviderId } from '$lib/assistant/providers/types';
 	import { showToast } from '$lib/state/toast.svelte';
 
@@ -25,6 +28,22 @@
 			? `${provider.label} · ${assistantConfig.model}`
 			: `${provider.label} · no token`
 	);
+
+	/** Providers whose endpoint holds the credential are served by the goose gateway. */
+	const viaGateway = $derived(provider.tokenOptional === true);
+	const gateway = $derived(describeGateway(gatewayHealth.data));
+	/** Only a finished check that found a problem is worth interrupting the chat for. */
+	const gatewayProblem = $derived(
+		viaGateway && gatewayHealth.data && gatewayHealth.data.state !== 'online' ? gateway : null
+	);
+
+	// Watch the gateway while the drawer is open, restarting when the provider or host changes.
+	$effect(() => {
+		const active = viaGateway;
+		void assistantConfig.host;
+		if (!active) return;
+		return untrack(() => watchGateway());
+	});
 
 	function send(text = input) {
 		if (!text.trim() || chat.busy || chat.pending) return;
@@ -66,6 +85,36 @@
 </script>
 
 <Drawer title="Node Assistant" {subtitle} onclose={() => ui.toggleAssistant()}>
+	{#snippet titleExtra()}
+		{#if viaGateway}
+			<span
+				class="gwdot"
+				title="Gateway {gateway.text}"
+				role="img"
+				aria-label="Gateway {gateway.text}"
+			>
+				<Dot color={gateway.dot} size={7} pulse={gatewayHealth.data?.state === 'online'} />
+			</span>
+		{/if}
+	{/snippet}
+
+	{#if gatewayProblem}
+		<div class="gw" class:red={gatewayProblem.tone === 'red'}>
+			<div class="gwtext">
+				<div class="atitle">{gatewayProblem.title}</div>
+				<div class="gwhint">{gatewayProblem.hint}</div>
+			</div>
+			<Button
+				variant="outline"
+				size="md"
+				onclick={() => gatewayHealth.refresh()}
+				disabled={gatewayHealth.loading}
+			>
+				{gatewayHealth.loading ? 'Checking…' : 'Check again'}
+			</Button>
+		</div>
+	{/if}
+
 	<div class="body" bind:this={body}>
 		{#each chat.messages as m, i (i)}
 			<div class="msg" class:user={m.role === 'user'}>{m.text}</div>
@@ -204,6 +253,32 @@
 	.abtns {
 		display: flex;
 		gap: 8px;
+	}
+	.gwdot {
+		display: inline-flex;
+	}
+	.gw {
+		display: flex;
+		align-items: flex-start;
+		gap: 12px;
+		padding: 10px 14px;
+		background: var(--amberbg);
+		color: var(--amber);
+		border-bottom: 1px solid var(--line);
+	}
+	.gw.red {
+		background: var(--redbg);
+		color: var(--red);
+	}
+	.gwtext {
+		flex: 1;
+		min-width: 0;
+	}
+	.gwhint {
+		font-size: 12px;
+		line-height: 1.5;
+		margin-top: 2px;
+		word-break: break-word;
 	}
 	.config {
 		padding: 12px 14px;

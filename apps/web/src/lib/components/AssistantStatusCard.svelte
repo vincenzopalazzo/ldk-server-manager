@@ -1,40 +1,19 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { Button, Card, Pill, type PillTone } from '@ldk-server-manager/ui';
+	import { Button, Card, Pill } from '@ldk-server-manager/ui';
 	import { assistantConfig } from '$lib/assistant/config.svelte';
-	import { gatewayHealth } from '$lib/assistant/gateway.svelte';
-	import type { GatewayState } from '$lib/assistant/gateway';
+	import { gatewayHealth, watchGateway } from '$lib/assistant/gateway.svelte';
+	import { describeGateway } from '$lib/assistant/gatewayStatus';
 	import { ui } from '$lib/state/ui.svelte';
 	import { relativeTime } from '$lib/utils/format';
-
-	const STATUS: Record<GatewayState, { text: string; tone: PillTone }> = {
-		online: { text: 'online', tone: 'green' },
-		'no-credential': { text: 'no credential', tone: 'amber' },
-		unreachable: { text: 'unreachable', tone: 'red' },
-		error: { text: 'error', tone: 'red' }
-	};
 
 	const provider = $derived(assistantConfig.provider);
 	/** Providers whose endpoint holds the credential are served by the goose gateway. */
 	const viaGateway = $derived(provider.tokenOptional === true);
 	const check = $derived(gatewayHealth.data);
-	const status = $derived(
-		check ? STATUS[check.state] : { text: 'checking…', tone: 'muted' as PillTone }
-	);
+	const status = $derived(describeGateway(check));
 
-	const hint = $derived.by(() => {
-		if (!viaGateway || !check) return null;
-		switch (check.state) {
-			case 'online':
-				return null;
-			case 'no-credential':
-				return 'The gateway is running but goose has no usable credential. On the host, run `goose configure` and choose xai_oauth.';
-			case 'unreachable':
-				return `Nothing answered at ${check.url}. Start it from the repository root with \`docker compose up -d\`, or fix the address in the assistant's Setup panel.`;
-			case 'error':
-				return `The gateway answered unexpectedly (${check.detail}).`;
-		}
-	});
+	const hint = $derived(viaGateway ? status.hint : null);
 
 	// Poll while this card is on screen. Tracks the provider and host explicitly, so a change
 	// in the assistant's Setup panel restarts the check against the new address.
@@ -42,7 +21,7 @@
 		const active = viaGateway;
 		void assistantConfig.host;
 		if (!active) return;
-		return untrack(() => gatewayHealth.poll(15_000));
+		return untrack(() => watchGateway());
 	});
 </script>
 

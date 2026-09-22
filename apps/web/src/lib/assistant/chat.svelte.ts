@@ -1,5 +1,6 @@
 import { declineAll, execute, run, type ChatMessage, type Resolved } from './agent';
 import { assistantConfig } from './config.svelte';
+import { gatewayHealth } from './gateway.svelte';
 import { describeCall } from './tools';
 import { ProviderAuthError, type ToolCall } from './providers/types';
 import { describeError } from '$lib/state/resource.svelte';
@@ -90,6 +91,9 @@ class Chat {
 				};
 			}
 		} catch (e) {
+			// A failed turn is the freshest signal there is; update the status right away
+			// rather than waiting for the next poll.
+			if (assistantConfig.provider.tokenOptional) void gatewayHealth.refresh();
 			this.say(
 				e instanceof ProviderAuthError
 					? e.message

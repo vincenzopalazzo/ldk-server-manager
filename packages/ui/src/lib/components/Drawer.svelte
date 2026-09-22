@@ -3,6 +3,8 @@
 
 	interface Props {
 		title: string;
+		/** Extra content rendered inline after the title (a status dot, a pill). */
+		titleExtra?: Snippet;
 		subtitle?: string;
 		icon?: string;
 		onclose: () => void;
@@ -10,14 +12,16 @@
 		/** Rendered above the input row, below the scrolling body. */
 		footer?: Snippet;
 	}
-	let { title, subtitle, icon = '✦', onclose, children, footer }: Props = $props();
+	let { title, titleExtra, subtitle, icon = '✦', onclose, children, footer }: Props = $props();
 </script>
 
 <aside class="drawer">
 	<div class="head">
 		<span class="icon">{icon}</span>
 		<div class="titles">
-			<div class="title">{title}</div>
+			<div class="title">
+				{title}{#if titleExtra}{@render titleExtra()}{/if}
+			</div>
 			{#if subtitle}<div class="sub">{subtitle}</div>{/if}
 		</div>
 		<button class="close" onclick={onclose} aria-label="Close">✕</button>
@@ -67,6 +71,9 @@
 	.title {
 		font-weight: 700;
 		font-size: 14px;
+		display: flex;
+		align-items: center;
+		gap: 7px;
 	}
 	.sub {
 		font-size: 10.5px;
