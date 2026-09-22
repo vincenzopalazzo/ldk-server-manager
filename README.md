@@ -94,18 +94,26 @@ Deploy the current working tree:
 pnpm run deploy
 ```
 
-To let Cloudflare build on every push instead (no GitHub Actions minutes are used, and each pull
-request gets its own preview URL), connect the repository in the Cloudflare dashboard under
-Workers & Pages -> ldk-server-manager -> Settings -> Builds, with:
+### Continuous integration
 
-| Setting                | Value             |
-| ---------------------- | ----------------- |
-| Build command          | `pnpm run ci`     |
-| Build output directory | `apps/web/build`  |
-| Root directory         | `/`               |
+Cloudflare Pages is the quality gate for this repo: it builds every push and each pull request
+gets its own preview URL, on Cloudflare's runners rather than GitHub Actions minutes. Connect the
+repository once in the Cloudflare dashboard under Workers & Pages -> ldk-server-manager ->
+Settings -> Builds, with:
 
-`pnpm run ci` is the same gate GitHub Actions runs, so a commit that fails type checking, linting
-or tests never reaches the site.
+| Setting                | Value            |
+| ---------------------- | ---------------- |
+| Build command          | `pnpm run ci`    |
+| Build output directory | `apps/web/build` |
+| Root directory         | `/`              |
+
+`pnpm run ci` runs type checking, linting, tests and the build, so a commit that breaks any of
+them fails the deployment and never reaches the site. Node is pinned by `.nvmrc`; the build image
+already ships a pnpm that reads this lockfile, and `PNPM_VERSION` can pin it exactly if you want.
+
+`.github/workflows/ci.yml` holds the same gate for GitHub Actions and is manual-only, because
+Actions cannot start while the account's Actions budget is exhausted. Its header comment says how
+to switch it back on.
 
 Two details make the static output behave correctly on Pages:
 

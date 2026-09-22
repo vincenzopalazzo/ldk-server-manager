@@ -1,12 +1,23 @@
+# The quality gate for this repo is the Cloudflare Pages build, which runs `pnpm run ci`
+# (type check, lint, tests, build) on every push to a connected branch. See README "Deploying".
+#
+# This workflow is the same gate on GitHub Actions, kept for when it is wanted again. It is
+# manual-only (Actions -> CI -> Run workflow) because Actions cannot start on this private
+# repo while the account's Actions budget is exhausted; leaving push/pull_request triggers on
+# would mark every commit failed without ever running a step. To re-enable, restore:
+#
+#   on:
+#     push:
+#       branches: [main]
+#     pull_request:
+#
+# Actions is free for public repositories on standard runners, so making this repo public is
+# also enough to bring it back.
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
-# A newer push supersedes an in-flight run, so no minutes are spent on stale commits.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -19,7 +30,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       # The generated protobuf code is committed; fail if it drifts from the .proto files.
