@@ -4,6 +4,7 @@
 	import { Toast } from '@ldk-server-manager/ui';
 	import AppHeader from '$lib/components/AppHeader.svelte';
 	import ConnectCard from '$lib/components/ConnectCard.svelte';
+	import LinkBanner from '$lib/components/LinkBanner.svelte';
 	import SendModal from '$lib/components/SendModal.svelte';
 	import ReceiveModal from '$lib/components/ReceiveModal.svelte';
 	import LiquidityModal from '$lib/components/LiquidityModal.svelte';
@@ -21,7 +22,10 @@
 
 	// Poll authoritative state while connected and keep the live event stream open.
 	$effect(() => {
-		if (!connection.isConfigured) {
+		// Tracked so that saving a different URL or key tears the old pollers and event
+		// stream down and starts fresh ones against the new client.
+		const settings = connection.settings;
+		if (!settings) {
 			resetAll();
 			eventFeed.stop();
 			return;
@@ -66,7 +70,10 @@
 	<AppHeader />
 	<main>
 		{#if connection.isConfigured}
-			{@render children()}
+			<div class="stack">
+				<LinkBanner />
+				{@render children()}
+			</div>
 		{:else}
 			<ConnectCard />
 		{/if}
@@ -87,6 +94,11 @@
 		min-height: 100vh;
 		display: flex;
 		flex-direction: column;
+	}
+	.stack {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
 	}
 	main {
 		width: 100%;

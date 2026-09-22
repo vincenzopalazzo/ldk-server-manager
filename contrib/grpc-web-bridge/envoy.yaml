@@ -69,8 +69,8 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: ${LDK_SERVER_HOST}
-                      port_value: ${LDK_SERVER_PORT}
+                      address: LDK_SERVER_HOST_PLACEHOLDER
+                      port_value: LDK_SERVER_PORT_PLACEHOLDER
       transport_socket:
         name: envoy.transport_sockets.tls
         typed_config:

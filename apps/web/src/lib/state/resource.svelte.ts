@@ -1,10 +1,15 @@
-import { LdkServerError } from '@ldk-server-manager/client';
+import { GrpcCode, LdkServerError } from '@ldk-server-manager/client';
 
 /** Human-readable message for any error thrown by the data layer. */
 export function describeError(e: unknown): string {
 	if (e instanceof LdkServerError) return e.message ? `${e.codeName}: ${e.message}` : e.codeName;
 	if (e instanceof Error) return e.message;
 	return String(e);
+}
+
+/** gRPC status of a failure, when the error came from the server. */
+export function errorCode(e: unknown): number | null {
+	return e instanceof LdkServerError ? e.code : null;
 }
 
 /**
@@ -14,6 +19,8 @@ export function describeError(e: unknown): string {
 export class Resource<T> {
 	data = $state<T | undefined>(undefined);
 	error = $state<string | null>(null);
+	/** gRPC status of the last failure, or null when it was not a server error. */
+	code = $state<number | null>(null);
 	loading = $state(false);
 	lastUpdated = $state<number | null>(null);
 
@@ -26,6 +33,16 @@ export class Resource<T> {
 		return this.data === undefined;
 	}
 
+	/** The node rejected our credentials. Retrying cannot fix this on its own. */
+	get isAuthError(): boolean {
+		return this.code === GrpcCode.UNAUTHENTICATED;
+	}
+
+	/** The node could not be reached at all. */
+	get isUnreachable(): boolean {
+		return this.code === GrpcCode.UNAVAILABLE;
+	}
+
 	/** Fetch (or re-fetch). Concurrent calls share one request. */
 	refresh(): Promise<T | undefined> {
 		if (this.inflight) return this.inflight;
@@ -34,11 +51,18 @@ export class Resource<T> {
 			.then((value) => {
 				this.data = value;
 				this.error = null;
+				this.code = null;
 				this.lastUpdated = Date.now();
 				return value;
 			})
 			.catch((e: unknown) => {
 				this.error = describeError(e);
+				this.code = errorCode(e);
+				// Stale data must not outlive a failed refresh: showing the last known
+				// balance next to an error reads as current, which is worse than nothing.
+				this.data = undefined;
+				// A rejected key will be rejected again; stop the timer until settings change.
+				if (this.isAuthError) this.stop();
 				return undefined;
 			})
 			.finally(() => {
@@ -65,6 +89,7 @@ export class Resource<T> {
 		this.stop();
 		this.data = undefined;
 		this.error = null;
+		this.code = null;
 		this.loading = false;
 		this.lastUpdated = null;
 	}

@@ -1,9 +1,16 @@
 services:
   grpc-web-bridge:
     image: envoyproxy/envoy:v1.32-latest
-    command: >
-      sh -c "envsubst < /etc/envoy/envoy.template.yaml > /tmp/envoy.yaml
-      && envoy -c /tmp/envoy.yaml"
+    # The Envoy image has no envsubst, so the two placeholders are substituted with sed.
+    # `$$` keeps docker compose from interpolating the variables itself.
+    command:
+      - /bin/sh
+      - -c
+      - |
+        sed -e "s|LDK_SERVER_HOST_PLACEHOLDER|$${LDK_SERVER_HOST}|g" \
+            -e "s|LDK_SERVER_PORT_PLACEHOLDER|$${LDK_SERVER_PORT}|g" \
+            /etc/envoy/envoy.template.yaml > /tmp/envoy.yaml
+        exec envoy -c /tmp/envoy.yaml
     environment:
       LDK_SERVER_HOST: ${LDK_SERVER_HOST:-host.docker.internal}
       LDK_SERVER_PORT: ${LDK_SERVER_PORT:-3536}

@@ -9,10 +9,15 @@
 	import { aliases } from '$lib/state/aliases.svelte';
 	import { prefs } from '$lib/state/prefs.svelte';
 	import { ui } from '$lib/state/ui.svelte';
+	import { nodeLink } from '$lib/state/status.svelte';
 	import { describeEvent } from '$lib/domain/events';
 	import { relativeTime } from '$lib/utils/format';
 
 	const alias = $derived(nodeInfo.data?.nodeAlias || 'node');
+	// Amounts are only real once the node has answered. Until then they render as a
+	// placeholder, never as 0 — a zero here would read as an empty wallet.
+	const known = $derived(nodeLink.isOnline && balances.data !== undefined);
+	const amt = (v: bigint | number | undefined) => (known ? prefs.fmt(v) : '—');
 	const ln = $derived(balances.data?.totalLightningBalanceSats ?? 0n);
 	const oc = $derived(balances.data?.totalOnchainBalanceSats ?? 0n);
 	const sweeps = $derived(balances.data?.pendingBalancesFromChannelClosures ?? []);
@@ -40,20 +45,28 @@
 	<div class="top">
 		<div>
 			<div class="caption">{alias} · total balance</div>
-			<div class="total">{prefs.fmt(total)} <span class="unit">{prefs.unitSuffix}</span></div>
+			<div class="total">
+				{amt(total)} <span class="unit">{known ? prefs.unitSuffix : ''}</span>
+			</div>
 		</div>
+		<!-- Disabled until the node answers: every one of these needs an authenticated call,
+		     so offering them while the link is down can only produce a failure toast. -->
 		<div class="actions">
-			<Button variant="dark" size="xl" onclick={() => ui.open('send')}>↑ Send</Button>
-			<Button size="xl" onclick={() => ui.open('receive')}>↓ Receive</Button>
-			<Button variant="outline" size="xl" onclick={() => ui.open('channel')}>+ Open channel</Button>
+			<Button variant="dark" size="xl" disabled={!known} onclick={() => ui.open('send')}
+				>↑ Send</Button
+			>
+			<Button size="xl" disabled={!known} onclick={() => ui.open('receive')}>↓ Receive</Button>
+			<Button variant="outline" size="xl" disabled={!known} onclick={() => ui.open('channel')}>
+				+ Open channel
+			</Button>
 		</div>
 	</div>
 
 	<div class="stats">
 		<StatCard
 			label="⚡ Lightning"
-			value={prefs.fmt(ln)}
-			note="{chList.length} channels · {pct(ln)}% of total"
+			value={amt(ln)}
+			note={known ? `${chList.length} channels · ${pct(ln)}% of total` : 'waiting for the node'}
 		>
 			<div class="mt12">
 				<div class="bar"><div class="fill acc" style:width="{pct(ln)}%"></div></div>
@@ -61,10 +74,10 @@
 		</StatCard>
 		<StatCard
 			label="⛓ On-chain"
-			value={prefs.fmt(oc)}
-			note="spendable {prefs.fmt(balances.data?.spendableOnchainBalanceSats)} · reserve {prefs.fmt(
-				balances.data?.totalAnchorChannelsReserveSats
-			)}"
+			value={amt(oc)}
+			note={known
+				? `spendable ${prefs.fmt(balances.data?.spendableOnchainBalanceSats)} · reserve ${prefs.fmt(balances.data?.totalAnchorChannelsReserveSats)}`
+				: 'waiting for the node'}
 		>
 			<div class="mt12">
 				<div class="bar"><div class="fill ink" style:width="{pct(oc)}%"></div></div>
@@ -72,14 +85,16 @@
 		</StatCard>
 		<StatCard
 			label="◷ Claimable"
-			value={prefs.fmt(claimable)}
-			note="{sweeps.length} pending {sweeps.length === 1 ? 'sweep' : 'sweeps'} after channel close"
+			value={amt(claimable)}
+			note={known
+				? `${sweeps.length} pending ${sweeps.length === 1 ? 'sweep' : 'sweeps'} after channel close`
+				: 'waiting for the node'}
 			noteGap={20}
 		/>
 		<StatCard
 			label="Fees earned · {fees?.detailed === false ? 'all time' : '30d'}"
-			value={prefs.fmt(fees?.feesSats)}
-			note="{fees?.count ?? 0} forwards"
+			value={fees ? prefs.fmt(fees.feesSats) : '—'}
+			note={fees ? `${fees.count} forwards` : 'waiting for the node'}
 		>
 			<Sparkline bars={fees?.buckets ?? [0, 0, 0, 0, 0]} />
 		</StatCard>
