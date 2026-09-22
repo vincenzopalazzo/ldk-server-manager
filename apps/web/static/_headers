@@ -1,0 +1,13 @@
+# Cloudflare Pages response headers. The page-level CSP is emitted by SvelteKit as a
+# <meta> tag; frame-ancestors is repeated here because meta CSP ignores it.
+/*
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  Permissions-Policy: accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()
+  Cross-Origin-Opener-Policy: same-origin
+
+# Hashed bundles are immutable.
+/_app/immutable/*
+  Cache-Control: public, max-age=31536000, immutable

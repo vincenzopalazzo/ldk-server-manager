@@ -11,7 +11,25 @@ export default defineConfig({
 				runes: ({ filename }) =>
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
-			adapter: adapter({ fallback: 'index.html', strict: false })
+			adapter: adapter({ fallback: 'index.html', strict: false }),
+			// Hashes are generated for SvelteKit's inline bootstrap script. `connect-src` stays
+			// broad on purpose: the node bridge is whatever URL the operator enters, and the
+			// assistant talks to the Claude API. `frame-ancestors` is set in `static/_headers`
+			// because it is ignored inside a <meta> CSP.
+			csp: {
+				mode: 'hash',
+				directives: {
+					'default-src': ['self'],
+					'script-src': ['self'],
+					'style-src': ['self', 'unsafe-inline', 'https://fonts.googleapis.com'],
+					'font-src': ['self', 'https://fonts.gstatic.com'],
+					'img-src': ['self', 'data:'],
+					'connect-src': ['self', 'https:', 'http://localhost:*', 'http://127.0.0.1:*'],
+					'base-uri': ['self'],
+					'form-action': ['none'],
+					'object-src': ['none']
+				}
+			}
 		})
 	],
 	test: {

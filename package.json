@@ -10,7 +10,9 @@
     "check": "pnpm -r check",
     "lint": "pnpm -r lint",
     "format": "pnpm -r format",
-    "test": "pnpm -r test",
-    "generate": "pnpm --filter @ldk-server-manager/client generate"
+    "test": "pnpm --filter @ldk-server-manager/client test && pnpm --filter web exec vitest --run --project server",
+    "generate": "pnpm --filter @ldk-server-manager/client generate",
+    "ci": "pnpm run check && pnpm run lint && pnpm run test && pnpm run build",
+    "deploy": "pnpm run build && pnpm --filter web exec wrangler pages deploy"
   }
 }

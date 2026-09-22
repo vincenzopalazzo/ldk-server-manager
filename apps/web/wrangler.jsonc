@@ -1,0 +1,8 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "ldk-server-manager",
+	"compatibility_date": "2026-09-22",
+	// Static SPA output from @sveltejs/adapter-static. There is no top-level 404.html,
+	// so Pages serves index.html for unmatched routes and client-side routing works.
+	"pages_build_output_dir": "build"
+}
