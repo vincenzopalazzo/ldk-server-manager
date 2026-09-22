@@ -2,7 +2,8 @@ import { sendChat, xaiProvider } from './xai';
 import type { Provider } from './types';
 
 /**
- * The assistant through the goose SDK, via the Rust gateway in `contrib/goose-gateway`.
+ * The assistant through the goose SDK, via the Rust gateway
+ * (https://github.com/vincenzopalazzo/goose-gateway).
  *
  * goose is a Rust crate with no browser target, so the gateway runs it out of process and
  * exposes the OpenAI wire format. That is the same format the xAI provider already speaks,
@@ -22,7 +23,7 @@ export const gooseProvider: Provider = {
 	tokenOptional: true,
 	credentialHint:
 		'No token needed — goose holds the X subscription credential and refreshes it. ' +
-		'Start the gateway with `docker compose up -d` (or `cargo run --release` in contrib/goose-gateway) ' +
+		'Start the gateway with `docker compose up -d` from this repository (or `cargo run --release` in goose-gateway) ' +
 		'after a one-time `goose configure` → xai_oauth on the host. Change the host only if you moved it.',
 	send: (turn, opts) =>
 		// The gateway ignores the bearer; send a placeholder so the request shape stays valid.

@@ -1,5 +1,5 @@
 /**
- * Health of the goose gateway (`contrib/goose-gateway`).
+ * Health of the goose gateway (https://github.com/vincenzopalazzo/goose-gateway).
  *
  * The gateway serves the OpenAI API under `/v1` and a health report at `/health` beside it,
  * so the health URL is the configured host with its trailing `/v1` swapped for `/health`.

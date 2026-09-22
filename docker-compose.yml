@@ -3,6 +3,7 @@
 #   grpc-web-bridge  Envoy: translates the page's gRPC-Web into ldk-server's native gRPC.
 #   goose-gateway    OpenAI-compatible endpoint backed by the goose SDK's xai_oauth provider,
 #                    so the assistant can use an X subscription and goose keeps the token fresh.
+#                    Built from https://github.com/vincenzopalazzo/goose-gateway at a pinned tag.
 #
 # Usage:
 #   cp /path/to/ldk-server/tls.crt contrib/grpc-web-bridge/ldk-server-tls.crt
@@ -32,7 +33,10 @@ services:
       - "host.docker.internal:host-gateway"
 
   goose-gateway:
-    build: ./contrib/goose-gateway
+    build: https://github.com/vincenzopalazzo/goose-gateway.git#v0.1.0
+    environment:
+      # The gateway answers localhost origins only; the deployed app needs to be listed too.
+      GOOSE_GATEWAY_ALLOWED_ORIGINS: ${GOOSE_GATEWAY_ALLOWED_ORIGINS:-https://ldk-server-manager.pages.dev}
     # goose's config dir on the host, mounted read-write: the provider rewrites the token
     # cache when it refreshes. Override GOOSE_CONFIG_DIR if yours is elsewhere.
     volumes:

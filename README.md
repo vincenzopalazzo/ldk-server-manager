@@ -15,7 +15,6 @@ backend: the browser talks to your node directly and the API key never leaves yo
 | `packages/ui`               | `@ldk-server-manager/ui`: the Svelte component library and design tokens used by the app. |
 | `packages/client`           | `@ldk-server-manager/client`: typed ldk-server client (generated protobuf + gRPC-Web + HMAC). |
 | `contrib/grpc-web-bridge`   | Envoy configuration that bridges browsers (gRPC-Web) to ldk-server (native gRPC).        |
-| `contrib/goose-gateway`     | Rust sidecar: OpenAI-compatible endpoint backed by the goose SDK, so the assistant can use an X subscription. |
 | `docker-compose.yml`        | Runs both sidecars beside the app.                                                       |
 
 Separation of concerns:
@@ -98,7 +97,8 @@ today, chosen per browser along with the model:
 
 ### goose (default)
 
-`goose (local)` talks to `contrib/goose-gateway`, a small Rust service that puts an
+`goose (local)` talks to [goose-gateway](https://github.com/vincenzopalazzo/goose-gateway), a
+small Rust service in its own repository that puts an
 OpenAI-compatible endpoint in front of the [goose SDK](https://github.com/aaif-goose/goose).
 Because it speaks the same wire format the Grok provider already uses, this preset is simply
 that provider aimed at the gateway: the page carries no goose-specific code.
@@ -113,10 +113,15 @@ goose configure              # once, on the host: choose xai_oauth
 docker compose up -d         # from the repository root; gateway on http://127.0.0.1:8791
 ```
 
+Replies stream. The gateway only answers browser origins it allows: localhost on any port,
+plus `https://ldk-server-manager.pages.dev`, which `docker-compose.yml` adds. If you serve the
+app somewhere else, set `GOOSE_GATEWAY_ALLOWED_ORIGINS` to that origin.
+
 The gateway is a Rust binary rather than a wrapper around the Python or Kotlin bindings, for
 a concrete reason: the X sign-in and refresh live in the `goose` crate, which the SDK bindings
-do not include. Depending on the crate directly is what makes the refresh real. See
-`contrib/goose-gateway/README.md` for building and configuration.
+do not include. Depending on the crate directly is what makes the refresh real. See the
+[goose-gateway README](https://github.com/vincenzopalazzo/goose-gateway#readme) for its API,
+building and configuration.
 
 ### Direct xAI
 
