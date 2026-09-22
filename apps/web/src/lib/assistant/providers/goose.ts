@@ -1,4 +1,4 @@
-import { xaiProvider } from './xai';
+import { sendChat, xaiProvider } from './xai';
 import type { Provider } from './types';
 
 /**
@@ -9,6 +9,8 @@ import type { Provider } from './types';
  * so this preset is simply that provider pointed at the gateway. The page carries no
  * goose-specific code, and nothing is pasted in: goose's own `xai_oauth` provider holds the
  * X subscription token and refreshes it.
+ *
+ * Replies stream: the gateway relays goose's own message stream as server-sent events.
  */
 export const GOOSE_GATEWAY_HOST = 'http://127.0.0.1:8791/v1';
 
@@ -24,9 +26,9 @@ export const gooseProvider: Provider = {
 		'after a one-time `goose configure` → xai_oauth on the host. Change the host only if you moved it.',
 	send: (turn, opts) =>
 		// The gateway ignores the bearer; send a placeholder so the request shape stays valid.
-		xaiProvider.send(turn, {
-			...opts,
-			token: opts.token || 'goose',
-			host: opts.host || GOOSE_GATEWAY_HOST
-		})
+		sendChat(
+			turn,
+			{ ...opts, token: opts.token || 'goose', host: opts.host || GOOSE_GATEWAY_HOST },
+			{ stream: true }
+		)
 };

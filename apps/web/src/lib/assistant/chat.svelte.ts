@@ -23,6 +23,10 @@ class Chat {
 	messages = $state<ChatMessage[]>([GREETING]);
 	busy = $state(false);
 	pending = $state<PendingApproval | null>(null);
+	/** True once reply text has started streaming in this pass; hides "thinking…". */
+	streaming = $state(false);
+	/** The message being streamed into, if any. */
+	private live: ChatMessage | null = null;
 
 	async send(text: string) {
 		const t = text.trim();
@@ -71,6 +75,8 @@ class Chat {
 
 	private async drive(resolved: Resolved[], manageBusy = true) {
 		if (manageBusy) this.busy = true;
+		// Whether the final answer already sits in a streamed message, so it is not said twice.
+		let answeredLive = false;
 		try {
 			const step = await run({
 				provider: assistantConfig.provider,
@@ -78,10 +84,18 @@ class Chat {
 				model: assistantConfig.model,
 				host: assistantConfig.host,
 				history: this.messages,
-				resolved
+				resolved,
+				onText: (delta) => this.streamText(delta),
+				onPassEnd: (result) => {
+					// Text streamed before a tool call stays as its own message ("Let me check…").
+					answeredLive = this.endStream(result.text) && result.calls.length === 0;
+					// Tools run next: bring "thinking…" back while they do. A final answer keeps
+					// it hidden until the turn ends, so it cannot flash after the text.
+					if (result.calls.length > 0) this.streaming = false;
+				}
 			});
 			if (step.kind === 'done') {
-				this.say(step.text);
+				if (!answeredLive) this.say(step.text);
 				this.refreshAffected();
 			} else {
 				this.pending = {
@@ -100,8 +114,37 @@ class Chat {
 					: `Something went wrong talking to ${assistantConfig.provider.label}: ${describeError(e)}`
 			);
 		} finally {
+			// A failed stream keeps whatever text had arrived; the error follows it.
+			this.endStream();
+			this.streaming = false;
 			if (manageBusy) this.busy = false;
 		}
+	}
+
+	private streamText(delta: string) {
+		if (!this.live) {
+			this.messages = [...this.messages, { role: 'ai', text: '' }];
+			this.live = this.messages[this.messages.length - 1];
+			this.streaming = true;
+		}
+		this.live.text += delta;
+	}
+
+	/**
+	 * Close the streamed message, settling it on `finalText` when given (the provider's
+	 * trimmed reply). An empty one is removed. Returns whether a non-empty message remains.
+	 */
+	private endStream(finalText?: string): boolean {
+		const live = this.live;
+		this.live = null;
+		if (!live) return false;
+		const text = (finalText ?? live.text).trim();
+		if (text) {
+			live.text = text;
+			return true;
+		}
+		this.messages = this.messages.filter((m) => m !== live);
+		return false;
 	}
 
 	private say(text: string) {

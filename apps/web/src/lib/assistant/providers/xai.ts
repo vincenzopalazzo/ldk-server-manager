@@ -1,6 +1,8 @@
+import { readStream } from './openaiStream';
 import {
 	ProviderAuthError,
 	type Provider,
+	type SendOptions,
 	type ToolCall,
 	type Turn,
 	type TurnResult
@@ -81,57 +83,75 @@ export const xaiProvider: Provider = {
 
 	defaultHost: DEFAULT_HOST,
 
-	async send(turn, { token, model, host }): Promise<TurnResult> {
-		const base = (host || DEFAULT_HOST).replace(/\/+$/, '');
-		let res: Response;
-		try {
-			res = await fetch(`${base}/chat/completions`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-				body: JSON.stringify({
-					model,
-					messages: buildMessages(turn),
-					tools: turn.tools.map((t) => ({
-						type: 'function',
-						function: { name: t.name, description: t.description, parameters: t.parameters }
-					})),
-					tool_choice: 'auto'
-				})
-			});
-		} catch {
-			throw new ProviderAuthError(`Could not reach ${base}. Is the endpoint running?`);
-		}
-
-		if (res.status === 401 || res.status === 403) {
-			// A gateway reports why in the OpenAI error shape; xAI itself does not say much.
-			const detail = (await res.json().catch(() => null)) as {
-				error?: { message?: string };
-			} | null;
-			throw new ProviderAuthError(
-				detail?.error?.message ??
-					'xAI rejected the token. An X subscription token expires after a while — get a fresh one and save it again.'
-			);
-		}
-		if (!res.ok) {
-			const body = await res.text().catch(() => '');
-			throw new Error(`xAI returned ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`);
-		}
-
-		const data = (await res.json()) as {
-			choices?: { message?: OpenAiMessage; finish_reason?: string }[];
-		};
-		const message = data.choices?.[0]?.message;
-		if (!message) throw new Error('xAI returned no message');
-
-		const calls: ToolCall[] = (message.tool_calls ?? []).map((c) => ({
-			id: c.id,
-			name: c.function.name,
-			input: parseArguments(c.function.arguments)
-		}));
-
-		return { text: (message.content ?? '').trim(), calls };
-	}
+	send: (turn, opts) => sendChat(turn, opts, { stream: false })
 };
+
+/**
+ * One chat completion against an OpenAI-compatible endpoint.
+ *
+ * With `stream`, the request asks for server-sent events and text reaches `onText` as it is
+ * generated. An endpoint that answers with plain JSON anyway (an older gateway, say) is read
+ * the non-streaming way, so asking is always safe.
+ */
+export async function sendChat(
+	turn: Turn,
+	{ token, model, host, onText }: SendOptions,
+	{ stream }: { stream: boolean }
+): Promise<TurnResult> {
+	const base = (host || DEFAULT_HOST).replace(/\/+$/, '');
+	let res: Response;
+	try {
+		res = await fetch(`${base}/chat/completions`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+			body: JSON.stringify({
+				model,
+				messages: buildMessages(turn),
+				tools: turn.tools.map((t) => ({
+					type: 'function',
+					function: { name: t.name, description: t.description, parameters: t.parameters }
+				})),
+				tool_choice: 'auto',
+				...(stream ? { stream: true } : {})
+			})
+		});
+	} catch {
+		throw new ProviderAuthError(`Could not reach ${base}. Is the endpoint running?`);
+	}
+
+	if (res.status === 401 || res.status === 403) {
+		// A gateway reports why in the OpenAI error shape; xAI itself does not say much.
+		const detail = (await res.json().catch(() => null)) as {
+			error?: { message?: string };
+		} | null;
+		throw new ProviderAuthError(
+			detail?.error?.message ??
+				'xAI rejected the token. An X subscription token expires after a while — get a fresh one and save it again.'
+		);
+	}
+	if (!res.ok) {
+		const body = await res.text().catch(() => '');
+		throw new Error(`xAI returned ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`);
+	}
+
+	if (stream && res.body && res.headers.get('content-type')?.includes('text/event-stream')) {
+		return readStream(res.body, parseArguments, onText);
+	}
+
+	const data = (await res.json()) as {
+		choices?: { message?: OpenAiMessage; finish_reason?: string }[];
+	};
+	const message = data.choices?.[0]?.message;
+	if (!message) throw new Error('xAI returned no message');
+
+	const calls: ToolCall[] = (message.tool_calls ?? []).map((c) => ({
+		id: c.id,
+		name: c.function.name,
+		input: parseArguments(c.function.arguments)
+	}));
+
+	return { text: (message.content ?? '').trim(), calls };
+}
 
 /** Tool arguments arrive as a JSON string and can be malformed; never throw on them. */
 export function parseArguments(raw: string): Record<string, unknown> {

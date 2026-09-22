@@ -1,6 +1,6 @@
 import { systemPrompt } from './snapshot';
 import { TOOLS, needsConfirmation, runTool } from './tools';
-import type { ChatMessage, ToolCall, ToolResult, Turn } from './providers/types';
+import type { ChatMessage, ToolCall, ToolResult, Turn, TurnResult } from './providers/types';
 import type { Provider } from './providers/types';
 
 export type { ChatMessage } from './providers/types';
@@ -24,6 +24,10 @@ export interface RunOptions {
 	history: ChatMessage[];
 	/** Tool calls already executed or approved in this exchange. */
 	resolved?: Resolved[];
+	/** Reply text as it streams in, for providers that stream. */
+	onText?: (delta: string) => void;
+	/** Called after each model reply, before any tools it asked for run. */
+	onPassEnd?: (result: TurnResult) => void;
 }
 
 /**
@@ -34,12 +38,13 @@ export interface RunOptions {
  * continues, which keeps "create an invoice for 50k" a single round trip.
  */
 export async function run(opts: RunOptions): Promise<AgentStep> {
-	const { provider, token, model, host, history } = opts;
+	const { provider, token, model, host, history, onText } = opts;
 	let resolved: Resolved[] = opts.resolved ?? [];
 
 	for (let pass = 0; pass < MAX_PASSES; pass++) {
 		const turn: Turn = { system: systemPrompt(), history, tools: TOOLS, resolved };
-		const result = await provider.send(turn, { token, model, host });
+		const result = await provider.send(turn, { token, model, host, onText });
+		opts.onPassEnd?.(result);
 
 		if (result.calls.length === 0) {
 			return { kind: 'done', text: result.text || '(no reply)' };

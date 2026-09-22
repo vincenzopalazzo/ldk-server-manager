@@ -45,6 +45,42 @@ describe('goose preset', () => {
 		expect((init.headers as Record<string, string>).authorization).toBe('Bearer goose');
 	});
 
+	it('asks for a stream and relays text as it arrives', async () => {
+		const sse =
+			`data: ${JSON.stringify({ choices: [{ index: 0, delta: { role: 'assistant', content: 'po' } }] })}\n\n` +
+			`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: 'ng' }, finish_reason: 'stop' }] })}\n\n` +
+			'data: [DONE]\n\n';
+		const fetchMock = vi
+			.fn()
+			.mockImplementation(() =>
+				Promise.resolve(new Response(sse, { headers: { 'content-type': 'text/event-stream' } }))
+			);
+		vi.stubGlobal('fetch', fetchMock);
+		const pieces: string[] = [];
+		const out = await gooseProvider.send(turn, {
+			token: '',
+			model: 'grok-4.7',
+			onText: (d) => pieces.push(d)
+		});
+		expect(pieces).toEqual(['po', 'ng']);
+		expect(out.text).toBe('pong');
+		const init = (fetchMock.mock.calls[0] as [string, RequestInit])[1];
+		expect(JSON.parse(init.body as string).stream).toBe(true);
+	});
+
+	it('still works with a gateway that answers in plain JSON', async () => {
+		// An older gateway ignores `stream` and returns the whole completion at once.
+		vi.stubGlobal('fetch', respond(reply));
+		const pieces: string[] = [];
+		const out = await gooseProvider.send(turn, {
+			token: '',
+			model: 'grok-4.7',
+			onText: (d) => pieces.push(d)
+		});
+		expect(out.text).toBe('pong');
+		expect(pieces).toEqual([]);
+	});
+
 	it('honours a host override', async () => {
 		const fetchMock = respond(reply);
 		vi.stubGlobal('fetch', fetchMock);
@@ -60,11 +96,13 @@ describe('goose preset', () => {
 });
 
 describe('xAI provider host handling', () => {
-	it('defaults to api.x.ai', async () => {
+	it('defaults to api.x.ai, without streaming', async () => {
 		const fetchMock = respond(reply);
 		vi.stubGlobal('fetch', fetchMock);
 		await xaiProvider.send(turn, { token: 't', model: 'grok-4.7' });
-		expect((fetchMock.mock.calls[0] as [string])[0]).toBe(`${XAI_DEFAULT_HOST}/chat/completions`);
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe(`${XAI_DEFAULT_HOST}/chat/completions`);
+		expect(JSON.parse(init.body as string).stream).toBeUndefined();
 	});
 
 	it('surfaces the gateway error message on 401', async () => {

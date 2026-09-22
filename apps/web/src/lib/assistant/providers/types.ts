@@ -55,7 +55,18 @@ export interface Provider {
 	defaultHost?: string;
 	/** True when the endpoint holds the credential itself and nothing must be pasted. */
 	tokenOptional?: boolean;
-	send(turn: Turn, opts: { token: string; model: string; host?: string }): Promise<TurnResult>;
+	send(turn: Turn, opts: SendOptions): Promise<TurnResult>;
+}
+
+export interface SendOptions {
+	token: string;
+	model: string;
+	host?: string;
+	/**
+	 * Receives reply text as it is generated. Providers that stream call it; the rest
+	 * ignore it, and the full text still arrives in the result either way.
+	 */
+	onText?: (delta: string) => void;
 }
 
 /** Raised when the credential is missing, wrong or expired. */

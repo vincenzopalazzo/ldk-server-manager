@@ -76,6 +76,7 @@
 	// Keep the transcript pinned to the newest message.
 	$effect(() => {
 		void chat.messages.length;
+		void chat.messages.at(-1)?.text; // follows a reply as it streams in
 		void chat.busy;
 		void chat.pending;
 		setTimeout(() => {
@@ -135,7 +136,7 @@
 			</div>
 		{/if}
 
-		{#if chat.busy}
+		{#if chat.busy && !chat.streaming}
 			<div class="msg thinking"><span class="pulse">thinking…</span></div>
 		{/if}
 	</div>
