@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
 	describeNodeCall,
 	loadNodeTools,
+	nodeToolsFor,
 	nodeToolSet,
 	toolsUrl,
 	type GatewayTool
@@ -120,10 +121,24 @@ describe('node tools through the gateway', () => {
 		expect(await set.run('bolt11_send', { invoice: 'x' })).toBe(
 			'Error: The given invoice is invalid.'
 		);
-		expect(await set.run('bolt11_send', { invoice: 'x' })).toBe(
-			'Error: bolt11_send may or may not have run'
+		// A 5xx or a broken connection may follow a call that ran: not a failure.
+		const lost502 = await set.run('bolt11_send', { invoice: 'x' });
+		expect(lost502).toMatch(
+			/^Unknown outcome: bolt11_send may or may not have run\. It may have run/
 		);
-		expect(await set.run('bolt11_send', { invoice: 'x' })).toContain('could not be reached');
+		const lostConn = await set.run('bolt11_send', { invoice: 'x' });
+		expect(lostConn).toMatch(
+			/^Unknown outcome: the connection to the gateway broke \(Failed to fetch\)/
+		);
+		expect(set.report('bolt11_send', { invoice: 'x' }, lostConn)).toMatch(
+			/^bolt11_send: invoice x: outcome unknown\. the connection/
+		);
+	});
+
+	it('treats a refused request as a failure', async () => {
+		const doFetch = vi.fn().mockResolvedValue(json({ error: { message: 'no tools' } }, 404));
+		const set = nodeToolSet('/goose/v1', [tool('bolt11_send')], doFetch);
+		expect(await set.run('bolt11_send', {})).toBe('Error: no tools');
 	});
 
 	it('reports an approved call in a line, not as raw output', () => {
@@ -134,5 +149,30 @@ describe('node tools through the gateway', () => {
 		expect(set.report('bolt11_send', { invoice: 'lnbc1' }, 'Error: no route')).toBe(
 			'bolt11_send: invoice lnbc1 failed. no route'
 		);
+	});
+
+	describe('binding to the dashboard node', () => {
+		const listing = json({ tools: [tool('get_node_info'), tool('bolt11_send')] });
+		const gateway = (nodeId: string) =>
+			vi.fn(async (input: RequestInfo | URL) =>
+				String(input).endsWith('/tools')
+					? listing.clone()
+					: json({ output: JSON.stringify({ node_id: nodeId }), is_error: false })
+			);
+
+		it('uses the node tools when the gateway drives the dashboard node', async () => {
+			const set = await nodeToolsFor('/goose/v1', '02aa', gateway('02aa') as typeof fetch);
+			expect(set?.source).toBe('node');
+		});
+
+		it('keeps the built-in tools when the gateway drives another node', async () => {
+			expect(await nodeToolsFor('/goose/v1', '02aa', gateway('03bb') as typeof fetch)).toBeNull();
+		});
+
+		it('keeps the built-in tools until the dashboard node is known', async () => {
+			const doFetch = gateway('02aa');
+			expect(await nodeToolsFor('/goose/v1', undefined, doFetch as typeof fetch)).toBeNull();
+			expect(doFetch).not.toHaveBeenCalled();
+		});
 	});
 });

@@ -1,11 +1,11 @@
 import { declineAll, execute, run, type ChatMessage, type Resolved } from './agent';
 import { assistantConfig } from './config.svelte';
 import { gatewayHealth } from './gateway.svelte';
-import { loadNodeTools, nodeToolSet } from './nodeTools';
+import { nodeToolsFor } from './nodeTools';
 import { builtinTools, type ToolSet } from './tools';
 import { ProviderAuthError, type ToolCall } from './providers/types';
 import { describeError } from '$lib/state/resource.svelte';
-import { balances, channels } from '$lib/state/node.svelte';
+import { balances, channels, nodeInfo } from '$lib/state/node.svelte';
 import { payments } from '$lib/state/payments.svelte';
 
 const GREETING: ChatMessage = {
@@ -23,19 +23,30 @@ export interface PendingApproval {
 }
 
 const NODE_TOOLS_TTL_MS = 60_000;
-let nodeTools: { host: string; set: ToolSet | null; at: number } | null = null;
+let nodeTools: {
+	host: string;
+	nodeId: string | undefined;
+	set: ToolSet | null;
+	at: number;
+} | null = null;
 
 /**
  * The tools for the next turn. Through the goose gateway, the node's own (ldk-server-mcp) when
- * the gateway serves them; otherwise, and for the browser-direct providers, the built-in ones.
- * Looked up at most once a minute per gateway address.
+ * the gateway serves them for the node this dashboard is connected to; otherwise, and for the
+ * browser-direct providers, the built-in ones. Looked up at most once a minute per gateway
+ * address and dashboard node.
  */
 async function toolsForTurn(): Promise<ToolSet> {
 	if (assistantConfig.provider.id !== 'goose') return builtinTools;
 	const host = assistantConfig.host;
-	if (!nodeTools || nodeTools.host !== host || Date.now() - nodeTools.at > NODE_TOOLS_TTL_MS) {
-		const tools = await loadNodeTools(host);
-		nodeTools = { host, set: tools ? nodeToolSet(host, tools) : null, at: Date.now() };
+	const nodeId = nodeInfo.data?.nodeId;
+	if (
+		!nodeTools ||
+		nodeTools.host !== host ||
+		nodeTools.nodeId !== nodeId ||
+		Date.now() - nodeTools.at > NODE_TOOLS_TTL_MS
+	) {
+		nodeTools = { host, nodeId, set: await nodeToolsFor(host, nodeId), at: Date.now() };
 	}
 	return nodeTools.set ?? builtinTools;
 }

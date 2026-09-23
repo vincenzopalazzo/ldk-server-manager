@@ -116,6 +116,15 @@ export function describeNodeCall(name: string, input: Record<string, unknown>): 
 	return args.length ? `${name}: ${args.join(', ')}` : name;
 }
 
+/**
+ * How a call whose result was lost reads, to the model and to the operator. It is not a
+ * failure: a payment or channel open may have gone through, and reporting it as failed invites
+ * a duplicate.
+ */
+const UNKNOWN = 'Unknown outcome: ';
+const CHECK_FIRST =
+	'It may have run. Check the node (payments, channels, balances) before trying again; do not retry on your own.';
+
 export function nodeToolSet(
 	host: string,
 	tools: GatewayTool[],
@@ -140,30 +149,62 @@ export function nodeToolSet(
 		},
 		describe: describeNodeCall,
 		async run(name, input) {
+			let res: Response;
 			try {
-				const res = await doFetch(`${base}/${encodeURIComponent(name)}`, {
+				res = await doFetch(`${base}/${encodeURIComponent(name)}`, {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
 					body: JSON.stringify(input ?? {})
 				});
-				const body = (await res.json().catch(() => null)) as {
-					output?: unknown;
-					is_error?: unknown;
-					error?: { message?: unknown };
-				} | null;
-				if (!res.ok) {
-					const why = body?.error?.message ?? `HTTP ${res.status}`;
-					return `Error: ${String(why)}`;
-				}
-				const output = typeof body?.output === 'string' ? body.output : '';
-				return body?.is_error === true ? `Error: ${output}` : output || '(no output)';
 			} catch (e) {
-				return `Error: the gateway could not be reached (${e instanceof Error ? e.message : String(e)})`;
+				// The request may have reached the node before the connection broke.
+				const why = e instanceof Error ? e.message : String(e);
+				return `${UNKNOWN}the connection to the gateway broke (${why}). ${CHECK_FIRST}`;
 			}
+			const body = (await res.json().catch(() => null)) as {
+				output?: unknown;
+				is_error?: unknown;
+				error?: { message?: unknown };
+			} | null;
+			const why = String(body?.error?.message ?? `HTTP ${res.status}`);
+			// A 5xx (the MCP server failing mid-call, or the 2-minute timeout) can follow a call
+			// that ran; a 4xx means the gateway refused it before calling anything.
+			if (res.status >= 500) return `${UNKNOWN}${why}. ${CHECK_FIRST}`;
+			if (!res.ok) return `Error: ${why}`;
+			const output = typeof body?.output === 'string' ? body.output : '';
+			return body?.is_error === true ? `Error: ${output}` : output || '(no output)';
 		},
-		report: (name, input, output) =>
-			output.startsWith('Error: ')
-				? `${describeNodeCall(name, input)} failed. ${output.slice('Error: '.length)}`
-				: `Done: ${describeNodeCall(name, input)}.`
+		report: (name, input, output) => {
+			const call = describeNodeCall(name, input);
+			if (output.startsWith(UNKNOWN))
+				return `${call}: outcome unknown. ${output.slice(UNKNOWN.length)}`;
+			if (output.startsWith('Error: ')) return `${call} failed. ${output.slice('Error: '.length)}`;
+			return `Done: ${call}.`;
+		}
 	};
+}
+
+/**
+ * The node's tools, but only when the gateway's MCP server drives the same node this dashboard
+ * is connected to: the model's snapshot comes from the dashboard's node, so tools acting on
+ * another one would read and spend somewhere the operator is not looking. Null (use the
+ * built-in tools, which go through the dashboard's own connection) when the gateway serves no
+ * tools, the dashboard's node is not known yet, or the two differ.
+ */
+export async function nodeToolsFor(
+	host: string,
+	dashboardNodeId: string | undefined,
+	doFetch: typeof fetch = (input, init) => globalThis.fetch(input, init)
+): Promise<ToolSet | null> {
+	if (!dashboardNodeId) return null;
+	const tools = await loadNodeTools(host, doFetch);
+	if (!tools?.some((t) => t.name === 'get_node_info')) return null;
+	const set = nodeToolSet(host, tools, doFetch);
+	const info = await set.run('get_node_info', {});
+	try {
+		const nodeId = (JSON.parse(info) as { node_id?: unknown }).node_id;
+		return nodeId === dashboardNodeId ? set : null;
+	} catch {
+		return null;
+	}
 }
