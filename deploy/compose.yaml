@@ -44,9 +44,10 @@ services:
 
   credentials:
     # The node's storage also holds its seed. Its clients (Envoy, the assistant, /bundle.json)
-    # need only the TLS certificate and the API key, so copy those two into node-client and
-    # mount that instead. Waits for the node to create them on its first start, and runs again
-    # on every `docker compose up`.
+    # need only the TLS certificate and the API key of the network ldk-server.toml selects, so
+    # copy those into node-client and mount that instead, with a config for ldk-server-mcp that
+    # names only the network. Waits for the node to create them on its first start, and runs
+    # again on every `docker compose up`.
     image: alpine:3.22
     user: "0:0"
     depends_on: [ldk-server]
@@ -55,20 +56,23 @@ services:
       - sh
       - -c
       - |
+        net=$$(sed -n 's/^[[:space:]]*network[[:space:]]*=[[:space:]]*"\([a-z0-9]*\)".*/\1/p' /config/ldk-server.toml | head -n 1)
+        [ "$$net" = mainnet ] && net=bitcoin
+        [ -n "$$net" ] || { echo "no network in ldk-server.toml" >&2; exit 1; }
         for i in $$(seq 1 600); do
-          key=$$(ls /ldk/*/api_key 2>/dev/null | head -n 1)
-          [ -n "$$key" ] && [ -s /ldk/tls.crt ] && break
+          [ -s "/ldk/$$net/api_key" ] && [ -s /ldk/tls.crt ] && break
           sleep 1
         done
-        [ -n "$$key" ] && [ -s /ldk/tls.crt ] || { echo "ldk-server has not created its API key and certificate after 10 minutes" >&2; exit 1; }
-        net=$$(basename "$$(dirname "$$key")")
+        [ -s "/ldk/$$net/api_key" ] && [ -s /ldk/tls.crt ] || { echo "ldk-server has not created its $$net API key and certificate after 10 minutes" >&2; exit 1; }
         rm -rf /client/* && mkdir -p "/client/$$net"
-        cp /ldk/tls.crt /client/tls.crt && cp "$$key" "/client/$$net/api_key"
+        cp /ldk/tls.crt /client/tls.crt && cp "/ldk/$$net/api_key" "/client/$$net/api_key"
+        printf '[node]\nnetwork = "%s"\n' "$$net" > /client/mcp.toml
         chown -R 1000:1000 /client && chmod 755 /client "/client/$$net"
-        chmod 444 /client/tls.crt && chmod 400 "/client/$$net/api_key"
+        chmod 444 /client/tls.crt /client/mcp.toml && chmod 400 "/client/$$net/api_key"
         echo "copied tls.crt and $$net/api_key"
     volumes:
       - ./data/ldk:/ldk:ro
+      - ./ldk-server.toml:/config/ldk-server.toml:ro
       - node-client:/client
 
   grpc-web-bridge:
@@ -93,10 +97,11 @@ services:
       # Only needed when the dashboard is reached through a public domain; IPs, localhost,
       # .local and .onion names are accepted automatically.
       GOOSE_GATEWAY_ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:-}
-      # ldk-server-mcp takes the network from the node's config, dials the node by the name in
-      # its certificate, and reads the API key and certificate from node-client, mounted where
-      # it looks for them ($HOME/.ldk-server). The seed is not in there.
-      GOOSE_GATEWAY_MCP_COMMAND: /usr/local/bin/ldk-server-mcp --config /config/ldk-server.toml
+      # ldk-server-mcp takes the network from node-client's mcp.toml (not the node's config,
+      # which holds the Bitcoin RPC password), dials the node by the name in its certificate,
+      # and reads the API key and certificate from node-client, mounted where it looks for them
+      # ($HOME/.ldk-server). The seed is not in there.
+      GOOSE_GATEWAY_MCP_COMMAND: /usr/local/bin/ldk-server-mcp --config /goose/.ldk-server/mcp.toml
       LDK_BASE_URL: ldk-server:3536
     volumes:
       # goose's sign-ins and keys. Set up providers from the dashboard's assistant panel, or
@@ -105,7 +110,6 @@ services:
       # 1000; init leaves it alone rather than change the ownership of your files.
       - ${GOOSE_CONFIG_DIR:-./data/goose}:/goose/config
       - node-client:/goose/.ldk-server:ro
-      - ./ldk-server.toml:/config/ldk-server.toml:ro
 
   web:
     image: ghcr.io/vincenzopalazzo/ldk-server-manager-web:${WEB_VERSION:-0.1.0-rc.1}
