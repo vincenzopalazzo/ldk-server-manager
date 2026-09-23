@@ -26,9 +26,10 @@
 	// A self-hosted bundle serves its own connection details next to the page: use them, so
 	// the operator never pastes an API key. Elsewhere (the public site) there is no bundle.
 	onMount(async () => {
+		const applyBundle = connection.beginBundleProbe();
 		const bundle = await loadBundle(window.location.origin);
 		if (bundle) {
-			connection.useBundle({ url: bundle.nodeUrl, apiKey: bundle.apiKey });
+			applyBundle({ url: bundle.nodeUrl, apiKey: bundle.apiKey });
 			assistantConfig.bundleGateway = bundle.gatewayUrl;
 		}
 		connection.markReady();
