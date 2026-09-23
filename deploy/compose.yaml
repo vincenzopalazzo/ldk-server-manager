@@ -112,7 +112,7 @@ services:
       - node-client:/goose/.ldk-server:ro
 
   web:
-    image: ghcr.io/vincenzopalazzo/ldk-server-manager-web:${WEB_VERSION:-0.1.0-rc.1}
+    image: ghcr.io/vincenzopalazzo/ldk-server-manager-web:${WEB_VERSION:-0.1.0}
     # The node's api_key is 0400 and owned by ldk-server's user; reading it for /bundle.json
     # needs the same user.
     user: "1000:0"
