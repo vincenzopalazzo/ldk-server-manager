@@ -9,6 +9,7 @@ non-root user, and keeps nothing it doesn't need.
 | `ldk-server-mcp`         | [ldk-node-bundle](https://github.com/vincenzopalazzo/ldk-node-bundle) `docker/ldk-server` | `scratch` + static musl binary |       5.2 MB |
 | `ldk-server-manager-web` | `docker/web/Dockerfile`            | `nginx-unprivileged:1.29-alpine-slim` |      22.4 MB |
 | `goose-gateway`          | [goose-gateway](https://github.com/vincenzopalazzo/goose-gateway) repo | `scratch` + static musl binary |        73 MB |
+| `ldk-node-assistant`     | [ldk-node-bundle](https://github.com/vincenzopalazzo/ldk-node-bundle) `docker/assistant`: goose-gateway + ldk-server-mcp | `scratch` | 78 MB |
 | gRPC-Web bridge          | official `envoyproxy/envoy:distroless-v1.37.6` + `docker/grpc-web-bridge/envoy.yaml` | distroless | 154 MB |
 
 All are published multi-arch (amd64, arm64) as `ghcr.io/vincenzopalazzo/<image>`.
@@ -18,7 +19,9 @@ All are published multi-arch (amd64, arm64) as `ghcr.io/vincenzopalazzo/<image>`
 
 ldk-server and ldk-server-mcp are built and released by
 [ldk-node-bundle](https://github.com/vincenzopalazzo/ldk-node-bundle), a public repository, on
-native amd64 and arm64 runners. goose-gateway is released by its own repository.
+native amd64 and arm64 runners, together with `ldk-node-assistant` (goose-gateway with
+ldk-server-mcp copied in, which the stack runs as its `goose-gateway` service). goose-gateway is
+released by its own repository.
 
 The web image is built here, since the dashboard's source is private:
 
