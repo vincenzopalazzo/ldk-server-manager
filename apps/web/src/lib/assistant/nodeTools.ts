@@ -97,10 +97,13 @@ function objectSchema(parameters: Record<string, unknown>): ObjectSchema {
 	};
 }
 
-const clip = (s: string, n = 40) => (s.length > n ? `${s.slice(0, n)}…` : s);
 const sats = (n: number) => `${n.toLocaleString('en-US')} sats`;
 
-/** "bolt11_send: invoice lnbc1…, amount 1,000 sats" — the arguments as the model sent them. */
+/**
+ * "bolt11_send: invoice lnbc1…, amount 1,000 sats": the arguments as the model sent them, in
+ * full. This is what the operator approves, so nothing is cut: a message to sign or an address
+ * with an innocuous start could otherwise hide the part that matters.
+ */
 export function describeNodeCall(name: string, input: Record<string, unknown>): string {
 	const args = Object.entries(input)
 		.filter(([, v]) => v !== undefined && v !== null && v !== '')
@@ -111,7 +114,7 @@ export function describeNodeCall(name: string, input: Record<string, unknown>): 
 			if (typeof v === 'number' && k.endsWith('_sats')) {
 				return `${k.slice(0, -'_sats'.length)} ${sats(v)}`;
 			}
-			return `${k} ${clip(typeof v === 'string' ? v : JSON.stringify(v))}`;
+			return `${k} ${typeof v === 'string' ? v : JSON.stringify(v)}`;
 		});
 	return args.length ? `${name}: ${args.join(', ')}` : name;
 }
@@ -122,6 +125,7 @@ export function describeNodeCall(name: string, input: Record<string, unknown>): 
  * a duplicate.
  */
 const UNKNOWN = 'Unknown outcome: ';
+const CALL_TIMEOUT_MS = 150_000;
 const CHECK_FIRST =
 	'It may have run. Check the node (payments, channels, balances) before trying again; do not retry on your own.';
 
@@ -154,7 +158,9 @@ export function nodeToolSet(
 				res = await doFetch(`${base}/${encodeURIComponent(name)}`, {
 					method: 'POST',
 					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify(input ?? {})
+					body: JSON.stringify(input ?? {}),
+					// Past the gateway's own 2-minute limit, so its answer normally arrives first.
+					signal: AbortSignal.timeout(CALL_TIMEOUT_MS)
 				});
 			} catch (e) {
 				// The request may have reached the node before the connection broke.

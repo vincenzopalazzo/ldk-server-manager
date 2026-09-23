@@ -206,6 +206,9 @@
 		padding-left: 18px;
 		font-size: 12.5px;
 		line-height: 1.5;
+		/* Approval lines show invoices and messages whole; let them wrap. */
+		overflow-wrap: anywhere;
+		white-space: pre-wrap;
 	}
 	.abtns {
 		display: flex;

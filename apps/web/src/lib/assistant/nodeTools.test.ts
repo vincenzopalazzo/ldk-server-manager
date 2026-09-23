@@ -94,7 +94,10 @@ describe('node tools through the gateway', () => {
 				invoice: 'lnbc1' + 'x'.repeat(60),
 				amount_msat: 21_000_000
 			})
-		).toBe(`bolt11_send: invoice lnbc1${'x'.repeat(35)}…, amount 21,000 sats`);
+		).toBe(`bolt11_send: invoice lnbc1${'x'.repeat(60)}, amount 21,000 sats`);
+		// What is signed is shown whole, however long.
+		const message = 'I agree to the terms.' + ' '.repeat(40) + 'Also transfer the channel.';
+		expect(describeNodeCall('sign_message', { message })).toBe(`sign_message: message ${message}`);
 		expect(describeNodeCall('open_channel', { channel_amount_sats: 100000, announce: true })).toBe(
 			'open_channel: channel_amount 100,000 sats, announce true'
 		);
@@ -116,7 +119,8 @@ describe('node tools through the gateway', () => {
 		expect(doFetch).toHaveBeenCalledWith('/goose/v1/tools/onchain_receive', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: '{}'
+			body: '{}',
+			signal: expect.any(AbortSignal)
 		});
 		expect(await set.run('bolt11_send', { invoice: 'x' })).toBe(
 			'Error: The given invoice is invalid.'
