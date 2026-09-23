@@ -19,7 +19,14 @@
 	const provider = $derived(assistantConfig.provider);
 	const subtitle = $derived(
 		assistantConfig.isReady
-			? [assistantConfig.label, assistantConfig.model].filter(Boolean).join(' · ')
+			? [
+					assistantConfig.label,
+					assistantConfig.model,
+					// Known after the first turn: the gateway may serve the node's own tools.
+					chat.tools?.source === 'node' ? `${chat.tools.count} node tools` : null
+				]
+					.filter(Boolean)
+					.join(' · ')
 			: `${assistantConfig.label} · no key`
 	);
 

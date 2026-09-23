@@ -11,12 +11,7 @@ import { describeError } from '$lib/state/resource.svelte';
 export interface ToolSpec {
 	name: string;
 	description: string;
-	parameters: {
-		type: 'object';
-		properties: Record<string, unknown>;
-		required: string[];
-		additionalProperties: false;
-	};
+	parameters: ObjectSchema;
 	/**
 	 * Moves funds or changes the node's on-chain position. The agent never runs these
 	 * on its own: it surfaces the call to the operator and waits for approval.
@@ -24,6 +19,32 @@ export interface ToolSpec {
 	confirm?: boolean;
 	/** One line shown in the approval prompt, built from the model's arguments. */
 	summarize?: (input: Record<string, unknown>) => string;
+}
+
+/** A JSON Schema for a tool's arguments: an object, as every provider requires. */
+export interface ObjectSchema {
+	type: 'object';
+	properties?: Record<string, unknown>;
+	required?: string[];
+	[keyword: string]: unknown;
+}
+
+/**
+ * The tools one conversation uses, and how to run them: the ones built into this page, or the
+ * node's own through the goose gateway (see `nodeTools.ts`).
+ */
+export interface ToolSet {
+	/** For the UI: which set this is. */
+	source: 'built-in' | 'node';
+	specs: ToolSpec[];
+	/** True when a call must be approved by the operator before it runs. */
+	needsConfirmation(name: string): boolean;
+	/** One line for the approval prompt. */
+	describe(name: string, input: Record<string, unknown>): string;
+	/** Run a call. Failures come back as text for the model, never as a throw. */
+	run(name: string, input: Record<string, unknown>): Promise<string>;
+	/** What to tell the operator once an approved call ran. */
+	report(name: string, input: Record<string, unknown>, output: string): string;
 }
 
 const sats = (v: unknown) => Number(v ?? 0).toLocaleString('en-US');
@@ -131,3 +152,14 @@ export async function runTool(name: string, input: Record<string, unknown>): Pro
 		return `Error: ${describeError(e)}`;
 	}
 }
+
+/** The tools above, run from this page through the node's gRPC-Web API. */
+export const builtinTools: ToolSet = {
+	source: 'built-in',
+	specs: TOOLS,
+	needsConfirmation,
+	describe: describeCall,
+	run: runTool,
+	// These already answer in a sentence meant for the operator.
+	report: (_name, _input, output) => output
+};

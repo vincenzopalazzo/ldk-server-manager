@@ -1,7 +1,8 @@
 import { declineAll, execute, run, type ChatMessage, type Resolved } from './agent';
 import { assistantConfig } from './config.svelte';
 import { gatewayHealth } from './gateway.svelte';
-import { describeCall } from './tools';
+import { loadNodeTools, nodeToolSet } from './nodeTools';
+import { builtinTools, type ToolSet } from './tools';
 import { ProviderAuthError, type ToolCall } from './providers/types';
 import { describeError } from '$lib/state/resource.svelte';
 import { balances, channels } from '$lib/state/node.svelte';
@@ -17,6 +18,26 @@ export interface PendingApproval {
 	calls: ToolCall[];
 	lines: string[];
 	resolved: Resolved[];
+	/** The set the calls came from, so approving runs them the same way. */
+	tools: ToolSet;
+}
+
+const NODE_TOOLS_TTL_MS = 60_000;
+let nodeTools: { host: string; set: ToolSet | null; at: number } | null = null;
+
+/**
+ * The tools for the next turn. Through the goose gateway, the node's own (ldk-server-mcp) when
+ * the gateway serves them; otherwise, and for the browser-direct providers, the built-in ones.
+ * Looked up at most once a minute per gateway address.
+ */
+async function toolsForTurn(): Promise<ToolSet> {
+	if (assistantConfig.provider.id !== 'goose') return builtinTools;
+	const host = assistantConfig.host;
+	if (!nodeTools || nodeTools.host !== host || Date.now() - nodeTools.at > NODE_TOOLS_TTL_MS) {
+		const tools = await loadNodeTools(host);
+		nodeTools = { host, set: tools ? nodeToolSet(host, tools) : null, at: Date.now() };
+	}
+	return nodeTools.set ?? builtinTools;
 }
 
 class Chat {
@@ -25,6 +46,8 @@ class Chat {
 	pending = $state<PendingApproval | null>(null);
 	/** True once reply text has started streaming in this pass; hides "thinking…". */
 	streaming = $state(false);
+	/** The tools the last turn had: the built-in ones, or the node's through the gateway. */
+	tools = $state<{ source: ToolSet['source']; count: number } | null>(null);
 	/** The message being streamed into, if any. */
 	private live: ChatMessage | null = null;
 
@@ -49,8 +72,8 @@ class Chat {
 		this.pending = null;
 		this.busy = true;
 		try {
-			const ran = await execute(p.calls);
-			for (const r of ran) this.say(r.result.output);
+			const ran = await execute(p.calls, p.tools);
+			for (const r of ran) this.say(p.tools.report(r.call.name, r.call.input, r.result.output));
 			this.refreshAffected();
 			await this.drive([...p.resolved, ...ran], false);
 		} catch (e) {
@@ -78,7 +101,10 @@ class Chat {
 		// Whether the final answer already sits in a streamed message, so it is not said twice.
 		let answeredLive = false;
 		try {
+			const tools = await toolsForTurn();
+			this.tools = { source: tools.source, count: tools.specs.length };
 			const step = await run({
+				tools,
 				provider: assistantConfig.provider,
 				token: assistantConfig.token,
 				model: assistantConfig.model,
@@ -101,8 +127,9 @@ class Chat {
 			} else {
 				this.pending = {
 					calls: step.calls,
-					lines: step.calls.map((c) => describeCall(c.name, c.input)),
-					resolved: step.resolved
+					lines: step.calls.map((c) => tools.describe(c.name, c.input)),
+					resolved: step.resolved,
+					tools
 				};
 			}
 		} catch (e) {

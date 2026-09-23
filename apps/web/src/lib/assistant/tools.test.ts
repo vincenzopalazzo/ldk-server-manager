@@ -21,7 +21,8 @@ describe('assistant tools', () => {
 			expect(t.parameters.type).toBe('object');
 			expect(t.parameters.additionalProperties).toBe(false);
 			// Required names must exist as properties, or providers reject the schema.
-			for (const r of t.parameters.required) expect(t.parameters.properties).toHaveProperty(r);
+			for (const r of t.parameters.required ?? [])
+				expect(t.parameters.properties).toHaveProperty(r);
 			expect(toolByName(t.name)).toBe(t);
 		}
 	});
