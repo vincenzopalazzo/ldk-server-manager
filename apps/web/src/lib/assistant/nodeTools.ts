@@ -206,11 +206,16 @@ export async function nodeToolsFor(
 	const tools = await loadNodeTools(host, doFetch);
 	if (!tools?.some((t) => t.name === 'get_node_info')) return null;
 	const set = nodeToolSet(host, tools, doFetch);
-	const info = await set.run('get_node_info', {});
+	return (await drivesNode(set, dashboardNodeId)) ? set : null;
+}
+
+/** Whether the gateway behind this set drives the given node, asked afresh (`get_node_info`). */
+export async function drivesNode(set: ToolSet, nodeId: string | undefined): Promise<boolean> {
+	if (!nodeId) return false;
 	try {
-		const nodeId = (JSON.parse(info) as { node_id?: unknown }).node_id;
-		return nodeId === dashboardNodeId ? set : null;
+		const info = await set.run('get_node_info', {});
+		return (JSON.parse(info) as { node_id?: unknown }).node_id === nodeId;
 	} catch {
-		return null;
+		return false;
 	}
 }

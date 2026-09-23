@@ -1,11 +1,12 @@
 import { declineAll, execute, run, type ChatMessage, type Resolved } from './agent';
 import { assistantConfig } from './config.svelte';
 import { gatewayHealth } from './gateway.svelte';
-import { nodeToolsFor } from './nodeTools';
+import { drivesNode, nodeToolsFor } from './nodeTools';
 import { builtinTools, type ToolSet } from './tools';
 import { ProviderAuthError, type ToolCall } from './providers/types';
 import { describeError } from '$lib/state/resource.svelte';
-import { balances, channels, nodeInfo } from '$lib/state/node.svelte';
+import { requireClient } from '$lib/api/client.svelte';
+import { balances, channels } from '$lib/state/node.svelte';
 import { payments } from '$lib/state/payments.svelte';
 
 const GREETING: ChatMessage = {
@@ -20,6 +21,8 @@ export interface PendingApproval {
 	resolved: Resolved[];
 	/** The set the calls came from, so approving runs them the same way. */
 	tools: ToolSet;
+	/** The node the dashboard was connected to when they were proposed. */
+	nodeId: string | undefined;
 }
 
 const NODE_TOOLS_TTL_MS = 60_000;
@@ -31,15 +34,26 @@ let nodeTools: {
 } | null = null;
 
 /**
+ * The node the dashboard's connection reaches right now, asked of it directly. The cached
+ * `nodeInfo` can still describe the previous node for a moment after the connection changes.
+ */
+async function currentNodeId(): Promise<string | undefined> {
+	try {
+		return (await requireClient().api.getNodeInfo()).nodeId || undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
  * The tools for the next turn. Through the goose gateway, the node's own (ldk-server-mcp) when
  * the gateway serves them for the node this dashboard is connected to; otherwise, and for the
  * browser-direct providers, the built-in ones. Looked up at most once a minute per gateway
  * address and dashboard node.
  */
-async function toolsForTurn(): Promise<ToolSet> {
+async function toolsForTurn(nodeId: string | undefined): Promise<ToolSet> {
 	if (assistantConfig.provider.id !== 'goose') return builtinTools;
 	const host = assistantConfig.host;
-	const nodeId = nodeInfo.data?.nodeId;
 	if (
 		!nodeTools ||
 		nodeTools.host !== host ||
@@ -49,6 +63,16 @@ async function toolsForTurn(): Promise<ToolSet> {
 		nodeTools = { host, nodeId, set: await nodeToolsFor(host, nodeId), at: Date.now() };
 	}
 	return nodeTools.set ?? builtinTools;
+}
+
+/**
+ * Whether approved calls may still run: the dashboard is on the node they were proposed for,
+ * and for the node's own tools the gateway still drives that node too. The prompt stays up
+ * across navigation, so either may have changed since.
+ */
+async function stillOnSameNode(p: PendingApproval): Promise<boolean> {
+	if (!p.nodeId || (await currentNodeId()) !== p.nodeId) return false;
+	return p.tools.source !== 'node' || drivesNode(p.tools, p.nodeId);
 }
 
 class Chat {
@@ -83,6 +107,12 @@ class Chat {
 		this.pending = null;
 		this.busy = true;
 		try {
+			if (!(await stillOnSameNode(p))) {
+				this.say(
+					'Not run: the dashboard or the assistant gateway is no longer connected to the node this was proposed for. Ask again on the node you want it to run on.'
+				);
+				return;
+			}
 			const ran = await execute(p.calls, p.tools);
 			for (const r of ran) this.say(p.tools.report(r.call.name, r.call.input, r.result.output));
 			this.refreshAffected();
@@ -112,7 +142,8 @@ class Chat {
 		// Whether the final answer already sits in a streamed message, so it is not said twice.
 		let answeredLive = false;
 		try {
-			const tools = await toolsForTurn();
+			const nodeId = await currentNodeId();
+			const tools = await toolsForTurn(nodeId);
 			this.tools = { source: tools.source, count: tools.specs.length };
 			const step = await run({
 				tools,
@@ -140,7 +171,8 @@ class Chat {
 					calls: step.calls,
 					lines: step.calls.map((c) => tools.describe(c.name, c.input)),
 					resolved: step.resolved,
-					tools
+					tools,
+					nodeId
 				};
 			}
 		} catch (e) {
