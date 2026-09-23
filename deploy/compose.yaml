@@ -24,7 +24,7 @@ services:
 
   ldk-server:
     # https://github.com/vincenzopalazzo/ldk-node-bundle
-    image: ghcr.io/vincenzopalazzo/ldk-server:${LDK_SERVER_VERSION:-0.1.0}
+    image: ghcr.io/vincenzopalazzo/ldk-server:${LDK_SERVER_VERSION:-0.1.1}
     command: ["/config/ldk-server.toml"]
     restart: unless-stopped
     depends_on:
