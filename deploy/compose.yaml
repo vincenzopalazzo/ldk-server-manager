@@ -43,7 +43,7 @@ services:
       - "host.docker.internal:host-gateway"
 
   grpc-web-bridge:
-    image: envoyproxy/envoy:distroless-v1.37-latest
+    image: envoyproxy/envoy:distroless-v1.37.6
     # Exits until ldk-server has created its TLS certificate on first start; restarting
     # brings it up once the certificate exists.
     restart: unless-stopped
