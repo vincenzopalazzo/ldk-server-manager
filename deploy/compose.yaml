@@ -2,7 +2,7 @@
 #
 #   cp ldk-server.example.toml ldk-server.toml   # pick the network and chain backend
 #   cp .env.example .env                          # optional: alias, ports, auth
-#   docker compose up -d --build
+#   docker compose up -d
 #
 # Then open http://127.0.0.1:8080. Data lives in ./data: back it up as described in README.md.
 #
@@ -13,10 +13,8 @@ name: ldk-node
 
 services:
   ldk-server:
-    build:
-      context: ../docker/ldk-server
-      target: ldk-server
-    image: ldk-node/ldk-server:local
+    # https://github.com/vincenzopalazzo/ldk-node-bundle
+    image: ghcr.io/vincenzopalazzo/ldk-server:${LDK_SERVER_VERSION:-0.1.0}
     command: ["/config/ldk-server.toml"]
     restart: unless-stopped
     # SIGTERM stops the node and persists channel state; don't cut it short.
@@ -42,8 +40,7 @@ services:
       - ./data/ldk:/ldk:ro
 
   goose-gateway:
-    build: https://github.com/vincenzopalazzo/goose-gateway.git#main
-    image: ldk-node/goose-gateway:local
+    image: ghcr.io/vincenzopalazzo/goose-gateway:${GOOSE_GATEWAY_VERSION:-0.2.1}
     restart: unless-stopped
     environment:
       # Only needed when the dashboard is reached through a public domain; IPs, localhost,
@@ -55,10 +52,7 @@ services:
       - ${GOOSE_CONFIG_DIR:-./data/goose}:/goose/config
 
   web:
-    build:
-      context: ..
-      dockerfile: docker/web/Dockerfile
-    image: ldk-node/web:local
+    image: ghcr.io/vincenzopalazzo/ldk-server-manager-web:${WEB_VERSION:-0.1.0-rc.1}
     # The node's api_key is 0400 and owned by ldk-server's user; reading it for /bundle.json
     # needs the same user.
     user: "1000:0"

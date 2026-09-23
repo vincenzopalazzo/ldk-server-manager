@@ -5,26 +5,30 @@ non-root user, and keeps nothing it doesn't need.
 
 | Image                    | Built from                         | Base                                | Size (arm64) |
 | ------------------------ | ---------------------------------- | ----------------------------------- | -----------: |
-| `ldk-server`             | `docker/ldk-server`, `--target ldk-server`     | `scratch` + static musl binary      |      40.6 MB |
-| `ldk-server-mcp`         | `docker/ldk-server`, `--target ldk-server-mcp` | `scratch` + static musl binary      |       5.2 MB |
+| `ldk-server`             | [ldk-node-bundle](https://github.com/vincenzopalazzo/ldk-node-bundle) `docker/ldk-server` | `scratch` + static musl binary |      40.6 MB |
+| `ldk-server-mcp`         | [ldk-node-bundle](https://github.com/vincenzopalazzo/ldk-node-bundle) `docker/ldk-server` | `scratch` + static musl binary |       5.2 MB |
 | `ldk-server-manager-web` | `docker/web/Dockerfile`            | `nginx-unprivileged:1.29-alpine-slim` |      22.4 MB |
 | `goose-gateway`          | [goose-gateway](https://github.com/vincenzopalazzo/goose-gateway) repo | `scratch` + static musl binary |        73 MB |
 | gRPC-Web bridge          | official `envoyproxy/envoy:distroless-v1.37-latest` + `docker/grpc-web-bridge/envoy.yaml` | distroless | 154 MB |
 
+All are published multi-arch (amd64, arm64) as `ghcr.io/vincenzopalazzo/<image>`.
 `scratch` images have no shell. Run tools such as `ldk-server-cli` from another container.
 
-## Build
+## Build and publish
+
+ldk-server and ldk-server-mcp are built and released by
+[ldk-node-bundle](https://github.com/vincenzopalazzo/ldk-node-bundle), a public repository, on
+native amd64 and arm64 runners. goose-gateway is released by its own repository.
+
+The web image is built here, since the dashboard's source is private:
 
 ```bash
-docker build --target ldk-server     -t ldk-server     docker/ldk-server
-docker build --target ldk-server-mcp -t ldk-server-mcp docker/ldk-server
-docker build -f docker/web/Dockerfile -t ldk-server-manager-web .
+docker build -f docker/web/Dockerfile -t ldk-server-manager-web .   # local
+docker/web/publish.sh 0.1.0                                          # amd64 + arm64 to ghcr.io
 ```
 
-ldk-server is built from upstream source at the commit in `LDK_SERVER_REV` (a build arg);
-upstream publishes no image. Rust images build natively for the machine's architecture:
-build amd64 on amd64 and arm64 on arm64, since compiling under QEMU emulation is very slow.
-The web image's static build runs once on the build machine's platform, whatever the target.
+Its static build runs once on the build machine's platform, so publishing both architectures
+needs no emulation.
 
 ## ldk-server
 

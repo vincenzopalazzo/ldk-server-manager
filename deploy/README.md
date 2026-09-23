@@ -7,7 +7,7 @@ dashboard, and the assistant's goose gateway.
 cd deploy
 cp ldk-server.example.toml ldk-server.toml   # network and chain backend
 cp .env.example .env                          # optional: alias, ports, basic auth
-docker compose up -d --build
+docker compose up -d
 ```
 
 Open http://127.0.0.1:8080. The dashboard connects to the node by itself; no API key to paste.
@@ -21,8 +21,11 @@ Open http://127.0.0.1:8080. The dashboard connects to the node by itself; no API
 | `grpc-web-bridge` | Envoy, gRPC-Web to gRPC        | inside the stack, through `web`               |
 | `goose-gateway`   | the assistant's model gateway  | inside the stack, through `web` at `/goose/`  |
 
-The images are small and built from source by `--build` (see [`docker/README.md`](../docker/README.md)).
-The first build compiles ldk-server and goose and takes a while.
+The images are published multi-arch (amd64, arm64) on ghcr.io and pinned by version in
+`compose.yaml`; change them in `.env`. See [`docker/README.md`](../docker/README.md) for what each
+contains and how to build them yourself.
+
+Upgrading: take a backup (below), bump the version, `docker compose up -d`.
 
 ## Settings
 
