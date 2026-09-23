@@ -56,7 +56,7 @@ services:
       - sh
       - -c
       - |
-        net=$$(sed -n 's/^[[:space:]]*network[[:space:]]*=[[:space:]]*"\([a-z0-9]*\)".*/\1/p' /config/ldk-server.toml | head -n 1)
+        net=$$(sed -n "s/^[[:space:]]*network[[:space:]]*=[[:space:]]*[\"']\([a-z0-9]*\)[\"'].*/\1/p" /config/ldk-server.toml | head -n 1)
         [ "$$net" = mainnet ] && net=bitcoin
         [ -n "$$net" ] || { echo "no network in ldk-server.toml" >&2; exit 1; }
         for i in $$(seq 1 600); do
