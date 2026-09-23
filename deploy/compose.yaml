@@ -65,7 +65,9 @@ services:
       GOOSE_GATEWAY_ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:-}
     volumes:
       # goose's sign-ins and keys. Set up providers from the dashboard's assistant panel, or
-      # point GOOSE_CONFIG_DIR at an existing goose config (e.g. ~/.config/goose).
+      # point GOOSE_CONFIG_DIR at an existing goose config (e.g. ~/.config/goose). The gateway
+      # runs as uid 1000 and rewrites tokens there, so that directory must be writable by uid
+      # 1000; init leaves it alone rather than change the ownership of your files.
       - ${GOOSE_CONFIG_DIR:-./data/goose}:/goose/config
 
   web:
