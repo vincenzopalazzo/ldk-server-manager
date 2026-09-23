@@ -2,13 +2,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // The node the dashboard's connection reaches; tests switch it mid-approval.
 let dashboardNode = '02aa';
+// When set, getNodeInfo answers from here first: the live connection moving on while the
+// cached snapshot still describes the old node.
+const nodeInfoAnswers: string[] = [];
 vi.mock('$lib/api/client.svelte', () => ({
 	requireClient: () => ({
 		api: new Proxy(
 			{},
 			{
 				get: (_t, name) =>
-					name === 'getNodeInfo' ? async () => ({ nodeId: dashboardNode }) : async () => ({})
+					name === 'getNodeInfo'
+						? async () => ({ nodeId: nodeInfoAnswers.shift() ?? dashboardNode })
+						: async () => ({})
 			}
 		)
 	})
@@ -70,5 +75,16 @@ describe('approving a proposed call', () => {
 		expect(execute).not.toHaveBeenCalled();
 		expect(chat.messages.at(-1)?.text).toMatch(/^Not run: /);
 		expect(chat.pending).toBeNull();
+	});
+
+	it('does not run a turn on a snapshot of another node', async () => {
+		const chat = await proposePayment(); // the snapshot now describes 02aa
+		chat.clear();
+		// The connection switched to 03bb, but the snapshot cannot catch up (still 02aa).
+		nodeInfoAnswers.push('03bb', '02aa');
+		step = { kind: 'confirm', calls: [payment], resolved: [] };
+		await chat.send('pay it');
+		expect(chat.pending).toBeNull();
+		expect(chat.messages.at(-1)?.text).toMatch(/still loading the node/);
 	});
 });

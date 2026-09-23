@@ -6,7 +6,7 @@ import { builtinTools, type ToolSet } from './tools';
 import { ProviderAuthError, type ToolCall } from './providers/types';
 import { describeError } from '$lib/state/resource.svelte';
 import { requireClient } from '$lib/api/client.svelte';
-import { balances, channels } from '$lib/state/node.svelte';
+import { balances, channels, nodeInfo, peers } from '$lib/state/node.svelte';
 import { payments } from '$lib/state/payments.svelte';
 
 const GREETING: ChatMessage = {
@@ -61,8 +61,30 @@ async function toolsForTurn(nodeId: string | undefined): Promise<ToolSet> {
 		Date.now() - nodeTools.at > NODE_TOOLS_TTL_MS
 	) {
 		nodeTools = { host, nodeId, set: await nodeToolsFor(host, nodeId), at: Date.now() };
+	} else if (nodeTools.set && !(await drivesNode(nodeTools.set, nodeId))) {
+		// The list is cached; which node the gateway drives is not. It may have been restarted
+		// on another one, and even calls that run unasked must not land there.
+		nodeTools = { host, nodeId, set: null, at: Date.now() };
 	}
 	return nodeTools.set ?? builtinTools;
+}
+
+/**
+ * Make the model's snapshot describe `nodeId`. Right after a connection change the cached
+ * node info, balances and channels can still be the previous node's; refresh them, and report
+ * false if they still do not match.
+ */
+async function snapshotIsFor(nodeId: string | undefined): Promise<boolean> {
+	if (!nodeId) return true; // no connection: the snapshot says nothing about a node either
+	if (nodeInfo.data?.nodeId === nodeId) return true;
+	await Promise.all([
+		nodeInfo.refresh(),
+		balances.refresh(),
+		channels.refresh(),
+		peers.refresh(),
+		payments.refresh()
+	]);
+	return nodeInfo.data?.nodeId === nodeId;
 }
 
 /**
@@ -143,6 +165,12 @@ class Chat {
 		let answeredLive = false;
 		try {
 			const nodeId = await currentNodeId();
+			if (!(await snapshotIsFor(nodeId))) {
+				this.say(
+					'The dashboard is still loading the node it just connected to. Ask again in a moment.'
+				);
+				return;
+			}
 			const tools = await toolsForTurn(nodeId);
 			this.tools = { source: tools.source, count: tools.specs.length };
 			const step = await run({
