@@ -51,10 +51,47 @@ origin in `PUBLIC_ORIGIN` so the assistant accepts it.
 
 Everything lives in `data/`:
 
-- `data/ldk/keys_mnemonic`: the node's seed. Required to recover on-chain funds.
-- `data/ldk/<network>/ldk_node_data.sqlite`: channel state. Required to recover channel funds;
-  never restore an old copy and never run the same node twice.
-- `data/ldk/<network>/api_key`, `tls.crt`, `tls.key`: regenerated if lost.
+- `data/ldk/keys_mnemonic`: the node's seed. Recovers on-chain funds.
+- `data/ldk/<network>/ldk_node_data.sqlite`: channel state. Recovers channel funds.
+- `data/ldk/<network>/api_key`, `tls.crt`, `tls.key`: regenerated if lost; clients re-pair.
 - `data/goose`: the assistant's sign-ins and keys.
 
 Stop with `docker compose down`; the node gets up to 3 minutes to persist its state.
+
+## Backups
+
+```bash
+./backup.sh              # full: seed, channel state, goose, config; stops the node for a minute
+./backup.sh --seed-only  # just the seed, no downtime
+./restore.sh backups/ldk-node-<time>.tar.gz
+```
+
+Archives go to `backups/` (or `$BACKUP_DIR`), readable only by you. They hold the seed and the
+API key: copy them off this machine and keep them private.
+
+What to back up, and when:
+
+- **The seed, once.** It never changes. `./backup.sh --seed-only` exports it; store it offline.
+  On its own it recovers on-chain funds, not channel balances.
+- **Channel state, after it changes.** The channel database changes with every payment, so a
+  backup is only as good as it is recent. Take a full backup after opening or closing channels,
+  and before upgrades or moving machines. SQLite is only consistent while the node is stopped,
+  which is why the full backup stops it briefly.
+
+The rules that keep a restore from losing money:
+
+- **Never restore channel state older than what the node already has.** Old state can broadcast
+  revoked commitment transactions, which lets peers take the channel balance. File times can't
+  tell which state is newer, so `restore.sh` refuses to restore over a machine that already
+  has channel state; override (`--replace-newer-state`) only when this machine's data is known
+  to be lost or corrupt.
+- **Never run the same node twice.** Moving machines: stop the old node for good, take a full
+  backup there, restore it here.
+- **Restore moves the current data aside** (`data/ldk.replaced-<time>`), it never deletes it.
+
+ldk-server has no static channel backup or remote state storage yet, so the channel database
+backup is the only way to recover channel balances; keeping it current is on you. For
+replicated storage, ldk-server can keep channel state in PostgreSQL (`[storage.postgres]`);
+then `backup.sh` refuses a full backup (there is no channel database to copy) and the database
+is yours to dump with `pg_dump` while the node is stopped. A `GOOSE_CONFIG_DIR` outside `data/`
+isn't backed up either; the script says so.
