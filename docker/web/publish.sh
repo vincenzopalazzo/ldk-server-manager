@@ -15,6 +15,9 @@ image=${IMAGE:-ghcr.io/vincenzopalazzo/ldk-server-manager-web}
 revision=$(git rev-parse HEAD)
 [ -z "$(git status --porcelain)" ] || { echo "Commit or stash your changes first: the image is labelled with $revision." >&2; exit 1; }
 
+# The source label names the public bundle repository on purpose: this repository is private,
+# so its URL would be a 404 for anyone pulling the image, and the bundle is where the image is
+# documented and released. The revision label is this repository's commit.
 docker buildx build \
     --platform linux/amd64,linux/arm64 \
     --file docker/web/Dockerfile \
