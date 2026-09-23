@@ -103,8 +103,13 @@
 		<div class="api">
 			Connected to ldk-server through a gRPC-Web bridge at <span class="mono ink"
 				>{connection.settings?.url}</span
-			>. Requests are signed with HMAC-SHA256 <span class="mono ink">x-auth</span> headers. The API key
-			is stored only in this browser.
+			>. Requests are signed with HMAC-SHA256 <span class="mono ink">x-auth</span> headers.
+			{#if connection.source === 'bundle'}
+				The server hosting this page provided the connection; nothing is stored in this browser.
+				Saving a connection here replaces it with your own.
+			{:else}
+				The API key is stored only in this browser.
+			{/if}
 		</div>
 		<div class="form">
 			<Field label="Bridge URL"><Input bind:value={url} mono /></Field>
