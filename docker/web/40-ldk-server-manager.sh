@@ -20,26 +20,29 @@ fi
 
 # /bundle.json: lets the dashboard connect without the user pasting the API key. Off unless
 # BUNDLE_API_KEY=true, because it hands the key to whoever can load the page.
+#
+# ldk-server writes <storage>/<network>/api_key on its first start, which can take a while (a
+# chain backend still syncing, a restart loop over bad config). So nginx starts right away and
+# a background loop writes the file once the key is readable, and again if it ever changes.
 rm -f /tmp/ldk/bundle.json
 if [ "${BUNDLE_API_KEY:-false}" = "true" ]; then
-    key_file="${LDK_API_KEY_FILE:-}"
-    waited=0
-    # ldk-server writes <storage>/<network>/api_key on its first start; give it time.
-    while :; do
-        if [ -z "${LDK_API_KEY_FILE:-}" ]; then
+    write_bundle() {
+        key_file="${LDK_API_KEY_FILE:-}"
+        if [ -z "$key_file" ]; then
             key_file=$(ls /ldk/*/api_key 2>/dev/null | head -n 1 || true)
         fi
-        if [ -n "$key_file" ] && [ -r "$key_file" ]; then
-            break
+        [ -n "$key_file" ] && [ -r "$key_file" ] || return 1
+        key_hex=$(od -An -v -tx1 "$key_file" | tr -d ' \n')
+        [ -n "$key_hex" ] || return 1
+        body=$(printf '{"nodeUrl":"","gatewayUrl":"/goose/v1","apiKey":"%s"}' "$key_hex")
+        if [ "$(cat /tmp/ldk/bundle.json 2>/dev/null)" != "$body" ]; then
+            printf '%s\n' "$body" > /tmp/ldk/bundle.json.tmp
+            mv /tmp/ldk/bundle.json.tmp /tmp/ldk/bundle.json
+            echo "40-ldk-server-manager: /bundle.json ready from ${key_file}"
         fi
-        if [ "$waited" -ge 120 ]; then
-            echo "40-ldk-server-manager: no readable api_key after ${waited}s (${key_file:-/ldk/*/api_key}); /bundle.json disabled" >&2
-            exit 0
-        fi
-        sleep 2
-        waited=$((waited + 2))
-    done
-    key_hex=$(od -An -v -tx1 "$key_file" | tr -d ' \n')
-    printf '{"nodeUrl":"","gatewayUrl":"/goose/v1","apiKey":"%s"}\n' "$key_hex" > /tmp/ldk/bundle.json
-    echo "40-ldk-server-manager: /bundle.json ready from ${key_file}"
+    }
+    if ! write_bundle; then
+        echo "40-ldk-server-manager: waiting for the node's api_key (${LDK_API_KEY_FILE:-/ldk/*/api_key}); /bundle.json appears once it exists"
+    fi
+    ( while :; do sleep 5; write_bundle || true; done ) &
 fi
