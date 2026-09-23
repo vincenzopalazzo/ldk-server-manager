@@ -24,6 +24,10 @@ esac
 umask 077
 mkdir -p "$BACKUP_DIR"
 out_dir=$(cd "$BACKUP_DIR" && pwd)
+# The archive is written while data/ is being read: it must not land inside what it copies.
+case "$out_dir/" in
+    "$(pwd)/data/"*) echo "BACKUP_DIR must be outside $(pwd)/data (it is $out_dir)." >&2; exit 2 ;;
+esac
 owner="$(id -u):$(id -g)"
 
 if [ "${1:-}" = "--seed-only" ]; then
@@ -72,6 +76,7 @@ if ! docker run --rm -v "$(pwd):/stage/stack:ro" -v "$out_dir:/out" "$HELPER_IMA
         echo channel_db=\${db#data/}
         if [ -n \"\$db\" ]; then echo channel_db_mtime=\$(stat -c %Y \"\$db\"); fi
     } > /stage/BACKUP-INFO
+    [ -s data/ldk/keys_mnemonic ] || { echo 'No seed (data/ldk/keys_mnemonic): refusing to call this a full backup.' >&2; exit 4; }
     set -- stack/data/ldk
     [ -d data/goose ] && set -- \"\$@\" stack/data/goose
     for f in ldk-server.toml .env; do [ -f \"\$f\" ] && set -- \"\$@\" \"stack/\$f\"; done

@@ -45,6 +45,10 @@ docker run --rm -v "$(pwd):/stage/stack" -v "$archive_dir:/in:ro" -e FORCE="$for
     cd /stage/stack
     tar -xzf "$ARCHIVE" -O BACKUP-INFO > /tmp/info 2>/dev/null || { echo "Not a backup from ./backup.sh (no BACKUP-INFO)." >&2; exit 1; }
     current=$(ls data/ldk/*/ldk_node_data.sqlite 2>/dev/null | head -n 1 || true)
+    # With PostgreSQL storage the current channel state lives in the database, not data/.
+    if [ -z "$current" ] && grep -Eq "^[[:space:]]*\[storage\.postgres\]" ldk-server.toml 2>/dev/null; then
+        current="the PostgreSQL database named in ldk-server.toml"
+    fi
     if [ -n "$current" ] && [ -z "$FORCE" ]; then
         echo "Refusing: this machine already has channel state ($current)." >&2
         echo "Restoring an older state over it can lose funds, and file times cannot tell which" >&2
