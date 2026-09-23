@@ -59,22 +59,32 @@ class ConnectionStore {
 		return this.settings !== null;
 	}
 
+	/** Bumped by every save or disconnect, so a bundle probe can tell it has been overtaken. */
+	private changes = 0;
+
 	save(settings: ConnectionSettings) {
 		const clean = { url: settings.url.trim().replace(/\/+$/, ''), apiKey: settings.apiKey.trim() };
 		this.settings = clean;
 		this.source = 'saved';
+		this.changes++;
 		persist(clean);
 	}
 
 	/**
-	 * Connect with what the bundle serving this page provides. Kept in memory only: the bundle
-	 * is the source of truth and is read again on every load. A connection the operator saved
-	 * themselves always wins.
+	 * Start looking for the bundle serving this page. Returns the function that applies what
+	 * it finds: it connects only if the page had no connection of its own when the probe
+	 * started and the operator has not saved or disconnected since, so a slow probe can never
+	 * undo a Disconnect. The bundle's connection stays in memory: it is read again on every
+	 * load.
 	 */
-	useBundle(settings: ConnectionSettings) {
-		if (this.source === 'saved') return;
-		this.settings = settings;
-		this.source = 'bundle';
+	beginBundleProbe(): (settings: ConnectionSettings) => void {
+		const startedAt = this.changes;
+		const hadOwn = this.source === 'saved';
+		return (settings) => {
+			if (hadOwn || this.changes !== startedAt) return;
+			this.settings = settings;
+			this.source = 'bundle';
+		};
 	}
 
 	markReady() {
@@ -84,6 +94,7 @@ class ConnectionStore {
 	clear() {
 		this.settings = null;
 		this.source = null;
+		this.changes++;
 		persist(null);
 	}
 }
