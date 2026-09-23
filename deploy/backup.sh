@@ -34,7 +34,20 @@ if [ "${1:-}" = "--seed-only" ]; then
     exit 0
 fi
 
-was_running=$(docker compose ps --status running --services 2>/dev/null | grep -x ldk-server || true)
+# With PostgreSQL storage the channel state is not in data/: a leftover SQLite file there would
+# be backed up as if it were current.
+if grep -Eq '^[[:space:]]*\[storage\.postgres\]' ldk-server.toml 2>/dev/null; then
+    echo "ldk-server.toml uses [storage.postgres]: the channel state is in PostgreSQL, not data/." >&2
+    echo "Dump it with pg_dump while the node is stopped; ./backup.sh --seed-only saves the seed." >&2
+    exit 4
+fi
+
+# Knowing whether the node runs decides whether the copy is consistent: fail if Compose cannot say.
+if ! services=$(docker compose ps --status running --services); then
+    echo "Could not ask Compose which services are running; fix compose.yaml or .env first." >&2
+    exit 1
+fi
+was_running=$(printf '%s\n' "$services" | grep -x ldk-server || true)
 if [ -n "$was_running" ]; then
     echo "Stopping ldk-server so its channel state is consistent (it may take up to 3 minutes)..."
     docker compose stop ldk-server >/dev/null

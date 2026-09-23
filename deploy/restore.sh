@@ -26,7 +26,11 @@ done
 [ -n "$archive" ] && [ -f "$archive" ] || { echo "usage: ./restore.sh <backup.tar.gz> (try --help)" >&2; exit 2; }
 
 # Every service mounts something the restore moves aside, not only the node.
-running=$(docker compose ps --status running --services 2>/dev/null | tr '\n' ' ')
+if ! running=$(docker compose ps --status running --services); then
+    echo "Could not ask Compose which services are running; fix compose.yaml or .env first." >&2
+    exit 1
+fi
+running=$(printf '%s' "$running" | tr '\n' ' ')
 if [ -n "${running% }" ]; then
     echo "Still running: ${running% }. Stop the stack first: docker compose down" >&2
     exit 1
