@@ -9,7 +9,7 @@ non-root user, and keeps nothing it doesn't need.
 | `ldk-server-mcp`         | [ldk-node-bundle](https://github.com/vincenzopalazzo/ldk-node-bundle) `docker/ldk-server` | `scratch` + static musl binary |       5.2 MB |
 | `ldk-server-manager-web` | `docker/web/Dockerfile`            | `nginx-unprivileged:1.29-alpine-slim` |      22.4 MB |
 | `goose-gateway`          | [goose-gateway](https://github.com/vincenzopalazzo/goose-gateway) repo | `scratch` + static musl binary |        73 MB |
-| gRPC-Web bridge          | official `envoyproxy/envoy:distroless-v1.37-latest` + `docker/grpc-web-bridge/envoy.yaml` | distroless | 154 MB |
+| gRPC-Web bridge          | official `envoyproxy/envoy:distroless-v1.37.6` + `docker/grpc-web-bridge/envoy.yaml` | distroless | 154 MB |
 
 All are published multi-arch (amd64, arm64) as `ghcr.io/vincenzopalazzo/<image>`.
 `scratch` images have no shell. Run tools such as `ldk-server-cli` from another container.
