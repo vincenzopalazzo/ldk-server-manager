@@ -1,0 +1,65 @@
+# Rendered by the image's entrypoint (envsubst) into conf.d/default.conf. Only the ${...}
+# names set in the environment are substituted; nginx's own $variables are left alone.
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=off;
+    set $grpc_web ${GRPC_WEB_UPSTREAM};
+    set $goose ${GOOSE_GATEWAY_UPSTREAM};
+
+    # Basic auth when AUTH_USER and AUTH_HASH are set; empty otherwise (see the entrypoint).
+    include /tmp/ldk/auth.conf;
+
+    # The page CSP comes from SvelteKit as a <meta> tag; frame-ancestors must be a header.
+    add_header X-Frame-Options DENY always;
+    add_header Content-Security-Policy "frame-ancestors 'none'" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy no-referrer always;
+    add_header Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()" always;
+    add_header Cross-Origin-Opener-Policy same-origin always;
+
+    # ldk-server over gRPC-Web, through the Envoy bridge. SubscribeEvents streams, so no
+    # buffering and a long read timeout.
+    location /api.LightningNode/ {
+        proxy_pass http://$grpc_web;
+        proxy_http_version 1.1;
+        proxy_buffering off;
+        proxy_request_buffering off;
+        proxy_read_timeout 1h;
+        client_max_body_size 4m;
+    }
+
+    # goose-gateway under /goose: chat and sign-in stream as server-sent events.
+    location /goose/ {
+        rewrite ^/goose/(.*)$ /$1 break;
+        proxy_pass http://$goose;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 1h;
+        client_max_body_size 4m;
+    }
+
+    # Connection details for the dashboard, written at start only when BUNDLE_API_KEY=true.
+    # It carries the node's API key: serve it only behind an auth gate.
+    location = /bundle.json {
+        alias /tmp/ldk/bundle.json;
+        default_type application/json;
+        expires -1;
+    }
+
+    # Hashed bundles never change.
+    location /_app/immutable/ {
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        add_header X-Content-Type-Options nosniff always;
+    }
+
+    # Single-page app: unknown paths get the shell.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

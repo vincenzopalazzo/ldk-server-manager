@@ -1,0 +1,10 @@
+# Build context for docker/web: the workspace sources, without local build output.
+**/node_modules
+**/.svelte-kit
+apps/web/build
+packages/*/dist
+.git
+.github
+.claude
+**/*.log
+**/target
