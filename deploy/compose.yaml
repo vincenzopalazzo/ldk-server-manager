@@ -42,38 +42,85 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  credentials:
+    # The node's storage also holds its seed. Its clients (Envoy, the assistant, /bundle.json)
+    # need only the TLS certificate and the API key of the network ldk-server.toml selects, so
+    # copy those into node-client and mount that instead, with a config for ldk-server-mcp that
+    # names only the network. Waits for the node to create them on its first start, and runs
+    # again on every `docker compose up`.
+    image: alpine:3.22
+    user: "0:0"
+    depends_on: [ldk-server]
+    restart: "no"
+    command:
+      - sh
+      - -c
+      - |
+        net=$$(sed -n "s/^[[:space:]]*network[[:space:]]*=[[:space:]]*[\"']\([a-z0-9]*\)[\"'].*/\1/p" /config/ldk-server.toml | head -n 1)
+        [ "$$net" = mainnet ] && net=bitcoin
+        [ -n "$$net" ] || { echo "no network in ldk-server.toml" >&2; exit 1; }
+        for i in $$(seq 1 600); do
+          [ -s "/ldk/$$net/api_key" ] && [ -s /ldk/tls.crt ] && break
+          sleep 1
+        done
+        [ -s "/ldk/$$net/api_key" ] && [ -s /ldk/tls.crt ] || { echo "ldk-server has not created its $$net API key and certificate after 10 minutes" >&2; exit 1; }
+        rm -rf /client/* && mkdir -p "/client/$$net"
+        cp /ldk/tls.crt /client/tls.crt && cp "/ldk/$$net/api_key" "/client/$$net/api_key"
+        printf '[node]\nnetwork = "%s"\n' "$$net" > /client/mcp.toml
+        chown -R 1000:1000 /client && chmod 755 /client "/client/$$net"
+        chmod 444 /client/tls.crt /client/mcp.toml && chmod 400 "/client/$$net/api_key"
+        echo "copied tls.crt and $$net/api_key"
+    volumes:
+      - ./data/ldk:/ldk:ro
+      - ./ldk-server.toml:/config/ldk-server.toml:ro
+      - node-client:/client
+
   grpc-web-bridge:
     image: envoyproxy/envoy:distroless-v1.37.6
-    # Exits until ldk-server has created its TLS certificate on first start; restarting
-    # brings it up once the certificate exists.
     restart: unless-stopped
+    depends_on:
+      credentials: { condition: service_completed_successfully }
     volumes:
       - ../docker/grpc-web-bridge/envoy.yaml:/etc/envoy/envoy.yaml:ro
-      - ./data/ldk:/ldk:ro
+      - node-client:/ldk:ro
 
   goose-gateway:
-    image: ghcr.io/vincenzopalazzo/goose-gateway:${GOOSE_GATEWAY_VERSION:-0.2.2}
+    # goose-gateway with ldk-server-mcp beside it, so the assistant can use the node's own
+    # tools. It does no approval itself (the dashboard asks before anything that moves funds),
+    # so it is reachable only through the web container.
+    image: ${ASSISTANT_IMAGE:-ghcr.io/vincenzopalazzo/ldk-node-assistant:0.2.0}
     restart: unless-stopped
     depends_on:
       init: { condition: service_completed_successfully }
+      credentials: { condition: service_completed_successfully }
     environment:
       # Only needed when the dashboard is reached through a public domain; IPs, localhost,
       # .local and .onion names are accepted automatically.
       GOOSE_GATEWAY_ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:-}
+      # ldk-server-mcp takes the network from node-client's mcp.toml (not the node's config,
+      # which holds the Bitcoin RPC password), dials the node by the name in its certificate,
+      # and reads the API key and certificate from node-client, mounted where it looks for them
+      # ($HOME/.ldk-server). The seed is not in there.
+      GOOSE_GATEWAY_MCP_COMMAND: /usr/local/bin/ldk-server-mcp --config /goose/.ldk-server/mcp.toml
+      LDK_BASE_URL: ldk-server:3536
     volumes:
       # goose's sign-ins and keys. Set up providers from the dashboard's assistant panel, or
       # point GOOSE_CONFIG_DIR at an existing goose config (e.g. ~/.config/goose). The gateway
       # runs as uid 1000 and rewrites tokens there, so that directory must be writable by uid
       # 1000; init leaves it alone rather than change the ownership of your files.
       - ${GOOSE_CONFIG_DIR:-./data/goose}:/goose/config
+      - node-client:/goose/.ldk-server:ro
 
   web:
-    image: ghcr.io/vincenzopalazzo/ldk-server-manager-web:${WEB_VERSION:-0.1.0-rc.1}
+    image: ghcr.io/vincenzopalazzo/ldk-server-manager-web:${WEB_VERSION:-0.1.0}
     # The node's api_key is 0400 and owned by ldk-server's user; reading it for /bundle.json
     # needs the same user.
     user: "1000:0"
     restart: unless-stopped
-    depends_on: [ldk-server, grpc-web-bridge, goose-gateway]
+    depends_on:
+      credentials: { condition: service_completed_successfully }
+      grpc-web-bridge: { condition: service_started }
+      goose-gateway: { condition: service_started }
     environment:
       # Lets the dashboard connect without pasting the API key. It hands out node control, so
       # anything beyond this machine must go through AUTH_USER/AUTH_HASH.
@@ -81,6 +128,10 @@ services:
       AUTH_USER: ${AUTH_USER:-}
       AUTH_HASH: ${AUTH_HASH:-}
     volumes:
-      - ./data/ldk:/ldk:ro
+      - node-client:/ldk:ro
     ports:
       - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"
+
+volumes:
+  # The node's TLS certificate and API key, copied out of its storage by `credentials`.
+  node-client:
