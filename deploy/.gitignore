@@ -1,3 +1,4 @@
 /data/
 /.env
 /ldk-server.toml
+/backups/
