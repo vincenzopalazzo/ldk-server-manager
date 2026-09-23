@@ -20,6 +20,7 @@ Open http://127.0.0.1:8080. The dashboard connects to the node by itself; no API
 | `ldk-server`      | the Lightning node             | peers on `9735`; gRPC only inside the stack   |
 | `grpc-web-bridge` | Envoy, gRPC-Web to gRPC        | inside the stack, through `web`               |
 | `goose-gateway`   | the assistant: goose gateway + ldk-server-mcp | inside the stack, through `web` at `/goose/` |
+| `init`, `credentials` | one-shot helpers           | prepare `data/`, and copy the node's TLS certificate and API key (not its seed) into the `node-client` volume the other services mount |
 
 The images are published multi-arch (amd64, arm64) on ghcr.io and pinned by version in
 `compose.yaml`; change them in `.env`. See [`docker/README.md`](../docker/README.md) for what each
