@@ -1,0 +1,92 @@
+# The whole stack on one machine: an LDK Lightning node, its dashboard, and the goose assistant.
+#
+#   cp ldk-server.example.toml ldk-server.toml   # pick the network and chain backend
+#   cp .env.example .env                          # optional: alias, ports, auth
+#   docker compose up -d --build
+#
+# Then open http://127.0.0.1:8080. Data lives in ./data: back it up as described in README.md.
+#
+# Services talk to each other on the compose network; only the dashboard (8080) and the
+# Lightning peer port (9735) are published.
+
+name: ldk-node
+
+services:
+  init:
+    # On Linux, Docker creates a missing bind-mount source owned by root, and the services
+    # below run as uid 1000: create ./data's directories and hand them over first.
+    image: alpine:3.22
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /data/ldk /data/goose && chown 1000:1000 /data/ldk /data/goose"]
+    volumes:
+      - ./data:/data
+    restart: "no"
+
+  ldk-server:
+    build:
+      context: ../docker/ldk-server
+      target: ldk-server
+    image: ldk-node/ldk-server:local
+    command: ["/config/ldk-server.toml"]
+    restart: unless-stopped
+    depends_on:
+      init: { condition: service_completed_successfully }
+    # SIGTERM stops the node and persists channel state; don't cut it short.
+    stop_grace_period: 3m
+    environment:
+      LDK_SERVER_NODE_ALIAS: ${ALIAS:-ldk-node}
+    volumes:
+      - ./data/ldk:/data
+      - ./ldk-server.toml:/config/ldk-server.toml:ro
+    ports:
+      - "${LIGHTNING_PORT:-9735}:9735"
+    # Lets a [bitcoind] rpc_address of host.docker.internal reach Bitcoin Core on this machine.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grpc-web-bridge:
+    image: envoyproxy/envoy:distroless-v1.37-latest
+    # Exits until ldk-server has created its TLS certificate on first start; restarting
+    # brings it up once the certificate exists.
+    restart: unless-stopped
+    volumes:
+      - ../docker/grpc-web-bridge/envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - ./data/ldk:/ldk:ro
+
+  goose-gateway:
+    build: https://github.com/vincenzopalazzo/goose-gateway.git#main
+    image: ldk-node/goose-gateway:local
+    restart: unless-stopped
+    depends_on:
+      init: { condition: service_completed_successfully }
+    environment:
+      # Only needed when the dashboard is reached through a public domain; IPs, localhost,
+      # .local and .onion names are accepted automatically.
+      GOOSE_GATEWAY_ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:-}
+    volumes:
+      # goose's sign-ins and keys. Set up providers from the dashboard's assistant panel, or
+      # point GOOSE_CONFIG_DIR at an existing goose config (e.g. ~/.config/goose). The gateway
+      # runs as uid 1000 and rewrites tokens there, so that directory must be writable by uid
+      # 1000; init leaves it alone rather than change the ownership of your files.
+      - ${GOOSE_CONFIG_DIR:-./data/goose}:/goose/config
+
+  web:
+    build:
+      context: ..
+      dockerfile: docker/web/Dockerfile
+    image: ldk-node/web:local
+    # The node's api_key is 0400 and owned by ldk-server's user; reading it for /bundle.json
+    # needs the same user.
+    user: "1000:0"
+    restart: unless-stopped
+    depends_on: [ldk-server, grpc-web-bridge, goose-gateway]
+    environment:
+      # Lets the dashboard connect without pasting the API key. It hands out node control, so
+      # anything beyond this machine must go through AUTH_USER/AUTH_HASH.
+      BUNDLE_API_KEY: "true"
+      AUTH_USER: ${AUTH_USER:-}
+      AUTH_HASH: ${AUTH_HASH:-}
+    volumes:
+      - ./data/ldk:/ldk:ro
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"

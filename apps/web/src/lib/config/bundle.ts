@@ -42,6 +42,40 @@ export function parseBundle(raw: unknown, origin: string): Bundle | null {
 	return { nodeUrl, gatewayUrl, apiKey: b.apiKey.toLowerCase() };
 }
 
+/** One look at `/bundle.json`: the bundle, and whether it is worth looking again. */
+export interface BundleProbe {
+	bundle: Bundle | null;
+	/**
+	 * The bundle's nginx answers 404 until the node has written its API key on a fresh stack,
+	 * so a 404 may turn into a bundle. A static host answers with the app's HTML instead, and a
+	 * malformed file stays malformed: neither is retried.
+	 */
+	retry: boolean;
+}
+
+/** Fetch `/bundle.json` from the page's own origin, once. */
+export async function probeBundle(
+	origin: string,
+	doFetch: typeof fetch = (input, init) => globalThis.fetch(input, init),
+	/** The connect screen waits on this, so a proxy that never answers must not hang it. */
+	timeoutMs = 5000
+): Promise<BundleProbe> {
+	try {
+		const res = await doFetch(new URL('/bundle.json', origin).href, {
+			cache: 'no-store',
+			credentials: 'same-origin',
+			signal: AbortSignal.timeout(timeoutMs)
+		});
+		if (res.status === 404) return { bundle: null, retry: true };
+		if (!res.ok || !res.headers.get('content-type')?.includes('json')) {
+			return { bundle: null, retry: false };
+		}
+		return { bundle: parseBundle(await res.json(), origin), retry: false };
+	} catch {
+		return { bundle: null, retry: false };
+	}
+}
+
 /**
  * Fetch `/bundle.json` from the page's own origin. Resolves null when there is no bundle: a
  * static host answers unknown paths with the app's HTML, so anything but JSON is "no bundle".
@@ -49,18 +83,34 @@ export function parseBundle(raw: unknown, origin: string): Bundle | null {
 export async function loadBundle(
 	origin: string,
 	doFetch: typeof fetch = (input, init) => globalThis.fetch(input, init),
-	/** The connect screen waits on this, so a proxy that never answers must not hang it. */
 	timeoutMs = 5000
 ): Promise<Bundle | null> {
-	try {
-		const res = await doFetch(new URL('/bundle.json', origin).href, {
-			cache: 'no-store',
-			credentials: 'same-origin',
-			signal: AbortSignal.timeout(timeoutMs)
-		});
-		if (!res.ok || !res.headers.get('content-type')?.includes('json')) return null;
-		return parseBundle(await res.json(), origin);
-	} catch {
-		return null;
+	return (await probeBundle(origin, doFetch, timeoutMs)).bundle;
+}
+
+/**
+ * Look for the bundle until it appears, while `keepLooking()` holds, a few minutes at most:
+ * a page opened on a fresh stack keeps waiting for the node's key instead of staying on the
+ * connect screen until reloaded. `afterFirst` runs once the first answer is in, so the
+ * connect screen is not held back while it waits.
+ */
+export async function waitForBundle(
+	origin: string,
+	opts: {
+		keepLooking: () => boolean;
+		afterFirst?: () => void;
+		fetch?: typeof fetch;
+		intervalMs?: number;
+		attempts?: number;
 	}
+): Promise<Bundle | null> {
+	const { intervalMs = 5000, attempts = 120 } = opts;
+	for (let i = 0; i < attempts; i++) {
+		const probe = await probeBundle(origin, opts.fetch);
+		if (i === 0) opts.afterFirst?.();
+		if (probe.bundle || !probe.retry || !opts.keepLooking()) return probe.bundle;
+		await new Promise((resolve) => setTimeout(resolve, intervalMs));
+		if (!opts.keepLooking()) return null;
+	}
+	return null;
 }

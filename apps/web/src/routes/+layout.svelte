@@ -11,7 +11,7 @@
 	import AssistantDrawer from '$lib/components/AssistantDrawer.svelte';
 	import ProviderPanel from '$lib/components/ProviderPanel.svelte';
 	import { connection } from '$lib/config/connection.svelte';
-	import { loadBundle } from '$lib/config/bundle';
+	import { waitForBundle } from '$lib/config/bundle';
 	import { assistantConfig } from '$lib/assistant/config.svelte';
 	import { balances, channels, nodeInfo, peers, resetAll } from '$lib/state/node.svelte';
 	import { payments } from '$lib/state/payments.svelte';
@@ -25,14 +25,22 @@
 
 	// A self-hosted bundle serves its own connection details next to the page: use them, so
 	// the operator never pastes an API key. Elsewhere (the public site) there is no bundle.
-	onMount(async () => {
+	onMount(() => {
 		const applyBundle = connection.beginBundleProbe();
-		const bundle = await loadBundle(window.location.origin);
-		if (bundle) {
-			applyBundle({ url: bundle.nodeUrl, apiKey: bundle.apiKey });
-			assistantConfig.bundleGateway = bundle.gatewayUrl;
-		}
-		connection.markReady();
+		let mounted = true;
+		void waitForBundle(window.location.origin, {
+			// On a fresh stack the key appears a little after the page; stop once connected.
+			keepLooking: () => mounted && !connection.isConfigured,
+			afterFirst: () => connection.markReady()
+		}).then((bundle) => {
+			if (bundle) {
+				applyBundle({ url: bundle.nodeUrl, apiKey: bundle.apiKey });
+				assistantConfig.bundleGateway = bundle.gatewayUrl;
+			}
+		});
+		return () => {
+			mounted = false;
+		};
 	});
 
 	// Poll authoritative state while connected and keep the live event stream open.

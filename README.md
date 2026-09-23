@@ -15,7 +15,9 @@ backend: the browser talks to your node directly and the API key never leaves yo
 | `packages/ui`               | `@ldk-server-manager/ui`: the Svelte component library and design tokens used by the app. |
 | `packages/client`           | `@ldk-server-manager/client`: typed ldk-server client (generated protobuf + gRPC-Web + HMAC). |
 | `contrib/grpc-web-bridge`   | Envoy configuration that bridges browsers (gRPC-Web) to ldk-server (native gRPC).        |
-| `docker-compose.yml`        | Runs both sidecars beside the app.                                                       |
+| `docker-compose.yml`        | Runs both sidecars beside the app, for a node that runs elsewhere.                       |
+| `deploy/`                   | The whole stack self-hosted with Docker Compose: node, dashboard, gateway. See [deploy/README.md](deploy/README.md). |
+| `docker/`                   | The small container images the stack uses. See [docker/README.md](docker/README.md).      |
 
 Separation of concerns:
 
