@@ -25,8 +25,10 @@ for arg in "$@"; do
 done
 [ -n "$archive" ] && [ -f "$archive" ] || { echo "usage: ./restore.sh <backup.tar.gz> (try --help)" >&2; exit 2; }
 
-if docker compose ps --status running --services 2>/dev/null | grep -qx ldk-server; then
-    echo "ldk-server is running. Stop the stack first: docker compose down" >&2
+# Every service mounts something the restore moves aside, not only the node.
+running=$(docker compose ps --status running --services 2>/dev/null | tr '\n' ' ')
+if [ -n "${running% }" ]; then
+    echo "Still running: ${running% }. Stop the stack first: docker compose down" >&2
     exit 1
 fi
 

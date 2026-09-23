@@ -2,3 +2,5 @@
 /.env
 /ldk-server.toml
 /backups/
+# What restore.sh moves aside; ldk-server.toml and .env can hold credentials.
+*.replaced-*
