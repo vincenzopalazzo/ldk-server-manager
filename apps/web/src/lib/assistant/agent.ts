@@ -1,5 +1,5 @@
 import { systemPrompt } from './snapshot';
-import { TOOLS, needsConfirmation, runTool } from './tools';
+import { builtinTools, type ToolSet } from './tools';
 import type { ChatMessage, ToolCall, ToolResult, Turn, TurnResult } from './providers/types';
 import type { Provider } from './providers/types';
 
@@ -30,6 +30,8 @@ export interface RunOptions {
 	onText?: (delta: string) => void;
 	/** Called after each model reply, before any tools it asked for run. */
 	onPassEnd?: (result: TurnResult) => void;
+	/** The tools the model may use; the built-in ones when omitted. */
+	tools?: ToolSet;
 }
 
 /**
@@ -41,10 +43,11 @@ export interface RunOptions {
  */
 export async function run(opts: RunOptions): Promise<AgentStep> {
 	const { provider, token, model, host, history, onText, upstream } = opts;
+	const tools = opts.tools ?? builtinTools;
 	let resolved: Resolved[] = opts.resolved ?? [];
 
 	for (let pass = 0; pass < MAX_PASSES; pass++) {
-		const turn: Turn = { system: systemPrompt(), history, tools: TOOLS, resolved };
+		const turn: Turn = { system: systemPrompt(), history, tools: tools.specs, resolved };
 		const result = await provider.send(turn, { token, model, host, onText, upstream });
 		opts.onPassEnd?.(result);
 
@@ -52,7 +55,7 @@ export async function run(opts: RunOptions): Promise<AgentStep> {
 			return { kind: 'done', text: result.text || '(no reply)' };
 		}
 
-		const risky = result.calls.filter((c) => needsConfirmation(c.name));
+		const risky = result.calls.filter((c) => tools.needsConfirmation(c.name));
 		if (risky.length > 0) {
 			return { kind: 'confirm', calls: risky, resolved };
 		}
@@ -61,7 +64,7 @@ export async function run(opts: RunOptions): Promise<AgentStep> {
 		for (const call of result.calls) {
 			ran.push({
 				call,
-				result: { id: call.id, name: call.name, output: await runTool(call.name, call.input) }
+				result: { id: call.id, name: call.name, output: await tools.run(call.name, call.input) }
 			});
 		}
 		resolved = [...resolved, ...ran];
@@ -71,12 +74,15 @@ export async function run(opts: RunOptions): Promise<AgentStep> {
 }
 
 /** Execute approved calls and hand back the results for the next pass. */
-export async function execute(calls: ToolCall[]): Promise<Resolved[]> {
+export async function execute(
+	calls: ToolCall[],
+	tools: ToolSet = builtinTools
+): Promise<Resolved[]> {
 	const out: Resolved[] = [];
 	for (const call of calls) {
 		out.push({
 			call,
-			result: { id: call.id, name: call.name, output: await runTool(call.name, call.input) }
+			result: { id: call.id, name: call.name, output: await tools.run(call.name, call.input) }
 		});
 	}
 	return out;

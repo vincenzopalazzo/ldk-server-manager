@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { declineAll, run } from './agent';
+import { declineAll, execute, run } from './agent';
+import { nodeToolSet } from './nodeTools';
 import type { Provider, ToolCall, TurnResult } from './providers/types';
 
 /** A provider that returns a scripted sequence of turns. */
@@ -78,6 +79,41 @@ describe('agent loop', () => {
 		const declined = declineAll([call('send_payment')]);
 		expect(declined[0].result.output).toContain('declined');
 		expect(declined[0].result.id).toBe('c_send_payment');
+	});
+
+	it('uses the tool set it is given, gating by that set', async () => {
+		const doFetch = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(
+					JSON.stringify({ output: '{"total_onchain_balance_sats":5}', is_error: false })
+				)
+			);
+		const tools = nodeToolSet(
+			'/goose/v1',
+			['get_balances', 'bolt11_send'].map((name) => ({
+				name,
+				description: name,
+				parameters: { type: 'object', properties: {} }
+			})),
+			doFetch
+		);
+		const p = fakeProvider([
+			{ text: '', calls: [call('get_balances')] },
+			{ text: '', calls: [call('bolt11_send', { invoice: 'lnbc1' })] }
+		]);
+		const step = await run({ ...opts(p), tools });
+		// The read ran unasked through the gateway; the payment stopped for approval.
+		expect(doFetch).toHaveBeenCalledTimes(1);
+		expect(step.kind).toBe('confirm');
+		if (step.kind !== 'confirm') throw new Error('unreachable');
+		expect(step.calls.map((c) => c.name)).toEqual(['bolt11_send']);
+		expect(step.resolved[0].result.output).toContain('total_onchain_balance_sats');
+
+		// Approving runs it through the same set.
+		const ran = await execute(step.calls, tools);
+		expect(doFetch).toHaveBeenLastCalledWith('/goose/v1/tools/bolt11_send', expect.anything());
+		expect(ran[0].result.id).toBe('c_bolt11_send');
 	});
 
 	it('surfaces provider errors to the caller', async () => {

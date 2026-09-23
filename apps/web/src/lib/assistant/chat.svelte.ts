@@ -1,10 +1,13 @@
 import { declineAll, execute, run, type ChatMessage, type Resolved } from './agent';
 import { assistantConfig } from './config.svelte';
 import { gatewayHealth } from './gateway.svelte';
-import { describeCall } from './tools';
+import { drivesNode, nodeToolsFor } from './nodeTools';
+import { builtinTools, type ToolSet } from './tools';
 import { ProviderAuthError, type ToolCall } from './providers/types';
 import { describeError } from '$lib/state/resource.svelte';
-import { balances, channels } from '$lib/state/node.svelte';
+import { requireClient } from '$lib/api/client.svelte';
+import { connection } from '$lib/config/connection.svelte';
+import { balances, channels, nodeInfo, peers } from '$lib/state/node.svelte';
 import { payments } from '$lib/state/payments.svelte';
 
 const GREETING: ChatMessage = {
@@ -17,6 +20,89 @@ export interface PendingApproval {
 	calls: ToolCall[];
 	lines: string[];
 	resolved: Resolved[];
+	/** The set the calls came from, so approving runs them the same way. */
+	tools: ToolSet;
+	/** The node the dashboard was connected to when they were proposed. */
+	nodeId: string | undefined;
+}
+
+const NODE_TOOLS_TTL_MS = 60_000;
+let nodeTools: {
+	host: string;
+	nodeId: string | undefined;
+	set: ToolSet | null;
+	at: number;
+} | null = null;
+
+/**
+ * The node the dashboard's connection reaches right now, asked of it directly. The cached
+ * `nodeInfo` can still describe the previous node for a moment after the connection changes.
+ */
+async function currentNodeId(): Promise<string | undefined> {
+	try {
+		return (await requireClient().api.getNodeInfo()).nodeId || undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * The tools for the next turn. Through the goose gateway, the node's own (ldk-server-mcp) when
+ * the gateway serves them for the node this dashboard is connected to; otherwise, and for the
+ * browser-direct providers, the built-in ones. Looked up at most once a minute per gateway
+ * address and dashboard node.
+ */
+async function toolsForTurn(nodeId: string | undefined): Promise<ToolSet> {
+	if (assistantConfig.provider.id !== 'goose') return builtinTools;
+	const host = assistantConfig.host;
+	if (
+		!nodeTools ||
+		nodeTools.host !== host ||
+		nodeTools.nodeId !== nodeId ||
+		Date.now() - nodeTools.at > NODE_TOOLS_TTL_MS
+	) {
+		nodeTools = { host, nodeId, set: await nodeToolsFor(host, nodeId), at: Date.now() };
+	} else if (nodeTools.set && !(await drivesNode(nodeTools.set, nodeId))) {
+		// The list is cached; which node the gateway drives is not. It may have been restarted
+		// on another one, and even calls that run unasked must not land there.
+		nodeTools = { host, nodeId, set: null, at: Date.now() };
+	}
+	return nodeTools.set ?? builtinTools;
+}
+
+/**
+ * Make the model's snapshot describe `nodeId`. Right after a connection change the cached
+ * node info, balances and channels can still be the previous node's; refresh them, and report
+ * false if they still do not match.
+ */
+let snapshotNode: string | undefined;
+
+async function snapshotIsFor(nodeId: string | undefined): Promise<boolean> {
+	if (!nodeId) return true; // no connection: the snapshot says nothing about a node either
+	// Each part of the snapshot loads on its own, so node info can already be the new node's
+	// while balances or channels are not: after any change of node, reload them all first.
+	if (snapshotNode === nodeId && nodeInfo.data?.nodeId === nodeId) return true;
+	snapshotNode = undefined;
+	await Promise.all([
+		nodeInfo.refresh(),
+		balances.refresh(),
+		channels.refresh(),
+		peers.refresh(),
+		payments.refresh()
+	]);
+	if (nodeInfo.data?.nodeId !== nodeId) return false;
+	snapshotNode = nodeId;
+	return true;
+}
+
+/**
+ * Whether approved calls may still run: the dashboard is on the node they were proposed for,
+ * and for the node's own tools the gateway still drives that node too. The prompt stays up
+ * across navigation, so either may have changed since.
+ */
+async function stillOnSameNode(p: PendingApproval): Promise<boolean> {
+	if (!p.nodeId || (await currentNodeId()) !== p.nodeId) return false;
+	return p.tools.source !== 'node' || drivesNode(p.tools, p.nodeId);
 }
 
 class Chat {
@@ -25,6 +111,8 @@ class Chat {
 	pending = $state<PendingApproval | null>(null);
 	/** True once reply text has started streaming in this pass; hides "thinking…". */
 	streaming = $state(false);
+	/** The tools the last turn had: the built-in ones, or the node's through the gateway. */
+	tools = $state<{ source: ToolSet['source']; count: number } | null>(null);
 	/** The message being streamed into, if any. */
 	private live: ChatMessage | null = null;
 
@@ -49,8 +137,14 @@ class Chat {
 		this.pending = null;
 		this.busy = true;
 		try {
-			const ran = await execute(p.calls);
-			for (const r of ran) this.say(r.result.output);
+			if (!(await stillOnSameNode(p))) {
+				this.say(
+					'Not run: the dashboard or the assistant gateway is no longer connected to the node this was proposed for. Ask again on the node you want it to run on.'
+				);
+				return;
+			}
+			const ran = await execute(p.calls, p.tools);
+			for (const r of ran) this.say(p.tools.report(r.call.name, r.call.input, r.result.output));
 			this.refreshAffected();
 			await this.drive([...p.resolved, ...ran], false);
 		} catch (e) {
@@ -78,7 +172,23 @@ class Chat {
 		// Whether the final answer already sits in a streamed message, so it is not said twice.
 		let answeredLive = false;
 		try {
+			const nodeId = await currentNodeId();
+			if (!nodeId && connection.isConfigured) {
+				// Connected but the node did not answer: which node the tools would reach, and
+				// which one the snapshot describes, cannot be established.
+				this.say('The node is not answering right now, so I cannot act on it. Try again shortly.');
+				return;
+			}
+			if (!(await snapshotIsFor(nodeId))) {
+				this.say(
+					'The dashboard is still loading the node it just connected to. Ask again in a moment.'
+				);
+				return;
+			}
+			const tools = await toolsForTurn(nodeId);
+			this.tools = { source: tools.source, count: tools.specs.length };
 			const step = await run({
+				tools,
 				provider: assistantConfig.provider,
 				token: assistantConfig.token,
 				model: assistantConfig.model,
@@ -101,8 +211,10 @@ class Chat {
 			} else {
 				this.pending = {
 					calls: step.calls,
-					lines: step.calls.map((c) => describeCall(c.name, c.input)),
-					resolved: step.resolved
+					lines: step.calls.map((c) => tools.describe(c.name, c.input)),
+					resolved: step.resolved,
+					tools,
+					nodeId
 				};
 			}
 		} catch (e) {
