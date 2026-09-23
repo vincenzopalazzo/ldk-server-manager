@@ -29,7 +29,10 @@ describe('node tools through the gateway', () => {
 	it('loads the listed tools, and gives up quietly when the gateway serves none', async () => {
 		const ok = vi.fn().mockResolvedValue(json({ tools: [tool('get_balances'), { bad: 1 }] }));
 		expect((await loadNodeTools('/goose/v1', ok))?.map((t) => t.name)).toEqual(['get_balances']);
-		expect(ok).toHaveBeenCalledWith('/goose/v1/tools', { cache: 'no-store' });
+		expect(ok).toHaveBeenCalledWith('/goose/v1/tools', {
+			cache: 'no-store',
+			signal: expect.any(AbortSignal)
+		});
 
 		const none = vi.fn().mockResolvedValue(json({ error: { message: 'no tools' } }, 404));
 		expect(await loadNodeTools('/goose/v1', none)).toBeNull();
@@ -37,6 +40,16 @@ describe('node tools through the gateway', () => {
 		expect(await loadNodeTools('/goose/v1', down)).toBeNull();
 		const empty = vi.fn().mockResolvedValue(json({ tools: [] }));
 		expect(await loadNodeTools('/goose/v1', empty)).toBeNull();
+	});
+
+	it('gives up on a gateway that never answers', async () => {
+		const hang = vi.fn(
+			(_input: RequestInfo | URL, init?: RequestInit) =>
+				new Promise<Response>((_resolve, reject) =>
+					init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+				)
+		);
+		expect(await loadNodeTools('/goose/v1', hang as unknown as typeof fetch, 20)).toBeNull();
 	});
 
 	it('runs reads and payment requests unasked, and asks for everything else', () => {

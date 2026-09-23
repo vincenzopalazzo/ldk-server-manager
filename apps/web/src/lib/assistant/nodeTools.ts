@@ -62,10 +62,15 @@ export function toolsUrl(host: string): string {
  */
 export async function loadNodeTools(
 	host: string,
-	doFetch: typeof fetch = (input, init) => globalThis.fetch(input, init)
+	doFetch: typeof fetch = (input, init) => globalThis.fetch(input, init),
+	/** A turn waits on this, so a gateway that never answers must not hang the assistant. */
+	timeoutMs = 5000
 ): Promise<GatewayTool[] | null> {
 	try {
-		const res = await doFetch(toolsUrl(host), { cache: 'no-store' });
+		const res = await doFetch(toolsUrl(host), {
+			cache: 'no-store',
+			signal: AbortSignal.timeout(timeoutMs)
+		});
 		if (!res.ok) return null;
 		const body = (await res.json()) as { tools?: unknown };
 		if (!Array.isArray(body.tools)) return null;
