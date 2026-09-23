@@ -6,6 +6,7 @@ import { builtinTools, type ToolSet } from './tools';
 import { ProviderAuthError, type ToolCall } from './providers/types';
 import { describeError } from '$lib/state/resource.svelte';
 import { requireClient } from '$lib/api/client.svelte';
+import { connection } from '$lib/config/connection.svelte';
 import { balances, channels, nodeInfo, peers } from '$lib/state/node.svelte';
 import { payments } from '$lib/state/payments.svelte';
 
@@ -172,6 +173,12 @@ class Chat {
 		let answeredLive = false;
 		try {
 			const nodeId = await currentNodeId();
+			if (!nodeId && connection.isConfigured) {
+				// Connected but the node did not answer: which node the tools would reach, and
+				// which one the snapshot describes, cannot be established.
+				this.say('The node is not answering right now, so I cannot act on it. Try again shortly.');
+				return;
+			}
 			if (!(await snapshotIsFor(nodeId))) {
 				this.say(
 					'The dashboard is still loading the node it just connected to. Ask again in a moment.'

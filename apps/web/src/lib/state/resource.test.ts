@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Resource } from './resource.svelte';
 
 describe('Resource', () => {
@@ -31,5 +31,24 @@ describe('Resource', () => {
 		await r.refresh();
 		expect(r.data).toBeUndefined();
 		expect(r.error).toBe('boom');
+	});
+});
+
+describe('Resource.reset', () => {
+	it('drops a request in flight: it is neither reused nor allowed to land', async () => {
+		let answer!: (v: string) => void;
+		const fetcher = vi
+			.fn<() => Promise<string>>()
+			.mockImplementationOnce(() => new Promise<string>((r) => (answer = r)))
+			.mockResolvedValueOnce('node B');
+		const r = new Resource(fetcher);
+		const old = r.refresh(); // to node A, still pending
+		r.reset(); // the connection changed
+		const fresh = r.refresh();
+		expect(fetcher).toHaveBeenCalledTimes(2); // not the shared old request
+		expect(await fresh).toBe('node B');
+		answer('node A'); // the old answer arrives late
+		await old;
+		expect(r.data).toBe('node B');
 	});
 });

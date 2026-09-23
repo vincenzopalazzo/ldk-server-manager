@@ -12,6 +12,8 @@ export class PagedList<T> {
 	error = $state<string | null>(null);
 	nextPageToken = $state<string | undefined>(undefined);
 	loadedOnce = $state(false);
+	/** Bumped by reset(), so a page requested before it cannot land. */
+	private generation = 0;
 
 	constructor(
 		private readonly fetchPage: (pageToken?: string) => Promise<{ items: T[]; next?: string }>
@@ -39,21 +41,25 @@ export class PagedList<T> {
 	}
 
 	private async load(token: string | undefined, replace: boolean) {
+		const generation = this.generation;
 		this.loading = true;
 		try {
 			const page = await this.fetchPage(token);
+			if (generation !== this.generation) return;
 			this.items = replace ? page.items : [...this.items, ...page.items];
 			this.nextPageToken = page.next;
 			this.error = null;
 			this.loadedOnce = true;
 		} catch (e) {
+			if (generation !== this.generation) return;
 			this.error = describeError(e);
 		} finally {
-			this.loading = false;
+			if (generation === this.generation) this.loading = false;
 		}
 	}
 
 	reset() {
+		this.generation++;
 		this.items = [];
 		this.nextPageToken = undefined;
 		this.error = null;

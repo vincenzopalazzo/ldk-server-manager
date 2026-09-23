@@ -14,7 +14,7 @@
 	import { waitForBundle } from '$lib/config/bundle';
 	import { assistantConfig } from '$lib/assistant/config.svelte';
 	import { balances, channels, nodeInfo, peers, resetAll } from '$lib/state/node.svelte';
-	import { payments } from '$lib/state/payments.svelte';
+	import { forwardedPayments, payments } from '$lib/state/payments.svelte';
 	import { feeSummary, forwardingStats } from '$lib/state/forwarding.svelte';
 	import { eventFeed } from '$lib/state/events.svelte';
 	import { aliases } from '$lib/state/aliases.svelte';
@@ -48,8 +48,12 @@
 		// Tracked so that saving a different URL or key tears the old pollers and event
 		// stream down and starts fresh ones against the new client.
 		const settings = connection.settings;
+		// Whatever was loaded belongs to the previous connection (or none): drop it, requests
+		// in flight included, so no view or assistant snapshot mixes two nodes.
+		resetAll();
+		payments.reset();
+		forwardedPayments.reset();
 		if (!settings) {
-			resetAll();
 			eventFeed.stop();
 			return;
 		}

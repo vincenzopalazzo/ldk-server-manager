@@ -26,6 +26,8 @@ export class Resource<T> {
 
 	private timer: ReturnType<typeof setInterval> | null = null;
 	private inflight: Promise<T | undefined> | null = null;
+	/** Bumped by reset(), so a request started before it can neither be reused nor land. */
+	private generation = 0;
 
 	constructor(private readonly fetcher: () => Promise<T>) {}
 
@@ -46,12 +48,14 @@ export class Resource<T> {
 	/** Fetch (or re-fetch). Concurrent calls share one request. */
 	refresh(): Promise<T | undefined> {
 		if (this.inflight) return this.inflight;
+		const generation = this.generation;
 		this.loading = true;
 		// Run the fetcher inside an async boundary: a fetcher that throws synchronously
 		// (e.g. requireClient() with no connection) must land in .catch like any failed
 		// request, not escape to the caller and leave `loading` stuck on.
 		this.inflight = (async () => this.fetcher())()
 			.then((value) => {
+				if (generation !== this.generation) return undefined;
 				this.data = value;
 				this.error = null;
 				this.code = null;
@@ -59,6 +63,7 @@ export class Resource<T> {
 				return value;
 			})
 			.catch((e: unknown) => {
+				if (generation !== this.generation) return undefined;
 				this.error = describeError(e);
 				this.code = errorCode(e);
 				// Stale data must not outlive a failed refresh: showing the last known
@@ -69,6 +74,7 @@ export class Resource<T> {
 				return undefined;
 			})
 			.finally(() => {
+				if (generation !== this.generation) return;
 				this.loading = false;
 				this.inflight = null;
 			});
@@ -88,8 +94,11 @@ export class Resource<T> {
 		this.timer = null;
 	}
 
+	/** Forget everything, including a request in flight (e.g. to the previous node). */
 	reset() {
 		this.stop();
+		this.generation++;
+		this.inflight = null;
 		this.data = undefined;
 		this.error = null;
 		this.code = null;
