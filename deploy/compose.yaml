@@ -52,7 +52,10 @@ services:
       - ./data/ldk:/ldk:ro
 
   goose-gateway:
-    image: ghcr.io/vincenzopalazzo/goose-gateway:${GOOSE_GATEWAY_VERSION:-0.2.2}
+    # goose-gateway with ldk-server-mcp beside it, so the assistant can use the node's own
+    # tools. It does no approval itself (the dashboard asks before anything that moves funds),
+    # so it is reachable only through the web container.
+    image: ${ASSISTANT_IMAGE:-ghcr.io/vincenzopalazzo/ldk-node-assistant:0.2.0}
     restart: unless-stopped
     depends_on:
       init: { condition: service_completed_successfully }
@@ -60,12 +63,18 @@ services:
       # Only needed when the dashboard is reached through a public domain; IPs, localhost,
       # .local and .onion names are accepted automatically.
       GOOSE_GATEWAY_ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:-}
+      # ldk-server-mcp takes the network from the node's config, dials the node by the name in
+      # its certificate, and reads the API key and certificate from the storage mounted below.
+      GOOSE_GATEWAY_MCP_COMMAND: /usr/local/bin/ldk-server-mcp --config /config/ldk-server.toml
+      LDK_BASE_URL: ldk-server:3536
     volumes:
       # goose's sign-ins and keys. Set up providers from the dashboard's assistant panel, or
       # point GOOSE_CONFIG_DIR at an existing goose config (e.g. ~/.config/goose). The gateway
       # runs as uid 1000 and rewrites tokens there, so that directory must be writable by uid
       # 1000; init leaves it alone rather than change the ownership of your files.
       - ${GOOSE_CONFIG_DIR:-./data/goose}:/goose/config
+      - ./data/ldk:/goose/.ldk-server:ro
+      - ./ldk-server.toml:/config/ldk-server.toml:ro
 
   web:
     image: ghcr.io/vincenzopalazzo/ldk-server-manager-web:${WEB_VERSION:-0.1.0-rc.1}

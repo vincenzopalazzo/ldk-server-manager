@@ -19,7 +19,7 @@ Open http://127.0.0.1:8080. The dashboard connects to the node by itself; no API
 | `web`             | dashboard + nginx              | `127.0.0.1:8080` (the only web entry point)   |
 | `ldk-server`      | the Lightning node             | peers on `9735`; gRPC only inside the stack   |
 | `grpc-web-bridge` | Envoy, gRPC-Web to gRPC        | inside the stack, through `web`               |
-| `goose-gateway`   | the assistant's model gateway  | inside the stack, through `web` at `/goose/`  |
+| `goose-gateway`   | the assistant: goose gateway + ldk-server-mcp | inside the stack, through `web` at `/goose/` |
 
 The images are published multi-arch (amd64, arm64) on ghcr.io and pinned by version in
 `compose.yaml`; change them in `.env`. See [`docker/README.md`](../docker/README.md) for what each
@@ -34,7 +34,10 @@ Upgrading: take a backup (below), bump the version, `docker compose up -d`.
   `announcement_addresses` only for a public routing node.
 - **`.env`**: alias, ports, basic auth, and where goose keeps its sign-ins.
 - **Assistant**: open it and pick a provider in its panel. Sign-ins and keys are stored by
-  goose in `data/goose` (or `GOOSE_CONFIG_DIR`).
+  goose in `data/goose` (or `GOOSE_CONFIG_DIR`). It uses the node's own tools (ldk-server-mcp,
+  46 of them): reads and new invoices or addresses run on their own, and the dashboard asks you
+  before anything else, such as a payment or a channel open. The gateway itself does not ask,
+  which is one more reason it is reachable only through `web`.
 
 ## Opening it beyond this machine
 
