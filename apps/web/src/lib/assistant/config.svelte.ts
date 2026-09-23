@@ -139,7 +139,7 @@ class AssistantConfig {
 
 	/** Effective host for the active provider: the override, else the provider's default. */
 	get host(): string {
-		return this.hosts[this.providerId] || this.provider.defaultHost || '';
+		return this.hostFor(this.providerId);
 	}
 
 	/** A provider whose endpoint holds the credential is ready with nothing pasted. */
@@ -147,16 +147,27 @@ class AssistantConfig {
 		return this.provider.tokenOptional === true || this.token.length > 0;
 	}
 
+	/**
+	 * The gateway the self-hosted bundle serving this page points at, if any. Used as the goose
+	 * default in place of localhost; an address the operator set still wins.
+	 */
+	bundleGateway = $state<string | null>(null);
+
+	private defaultHostFor(id: ProviderId): string {
+		if (id === 'goose' && this.bundleGateway) return this.bundleGateway;
+		return providerById(id).defaultHost || '';
+	}
+
 	/** Effective host for any provider, selected or not (the gateway, from the panel). */
 	hostFor(id: ProviderId): string {
-		return this.hosts[id] || providerById(id).defaultHost || '';
+		return this.hosts[id] || this.defaultHostFor(id);
 	}
 
 	/** Override a provider's host; blank reverts to its default. */
 	setHostFor(id: ProviderId, value: string) {
 		const v = value.trim();
 		const next = { ...this.hosts };
-		if (v && v !== providerById(id).defaultHost) next[id] = v;
+		if (v && v !== this.defaultHostFor(id)) next[id] = v;
 		else delete next[id];
 		this.hosts = next;
 		this.persist();

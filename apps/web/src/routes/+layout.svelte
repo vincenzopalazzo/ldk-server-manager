@@ -1,6 +1,6 @@
 <script lang="ts">
 	import '@ldk-server-manager/ui/styles.css';
-	import type { Snippet } from 'svelte';
+	import { onMount, type Snippet } from 'svelte';
 	import { Toast } from '@ldk-server-manager/ui';
 	import AppHeader from '$lib/components/AppHeader.svelte';
 	import ConnectCard from '$lib/components/ConnectCard.svelte';
@@ -11,6 +11,8 @@
 	import AssistantDrawer from '$lib/components/AssistantDrawer.svelte';
 	import ProviderPanel from '$lib/components/ProviderPanel.svelte';
 	import { connection } from '$lib/config/connection.svelte';
+	import { loadBundle } from '$lib/config/bundle';
+	import { assistantConfig } from '$lib/assistant/config.svelte';
 	import { balances, channels, nodeInfo, peers, resetAll } from '$lib/state/node.svelte';
 	import { payments } from '$lib/state/payments.svelte';
 	import { feeSummary, forwardingStats } from '$lib/state/forwarding.svelte';
@@ -20,6 +22,17 @@
 	import { ui } from '$lib/state/ui.svelte';
 
 	let { children }: { children: Snippet } = $props();
+
+	// A self-hosted bundle serves its own connection details next to the page: use them, so
+	// the operator never pastes an API key. Elsewhere (the public site) there is no bundle.
+	onMount(async () => {
+		const bundle = await loadBundle(window.location.origin);
+		if (bundle) {
+			connection.useBundle({ url: bundle.nodeUrl, apiKey: bundle.apiKey });
+			assistantConfig.bundleGateway = bundle.gatewayUrl;
+		}
+		connection.markReady();
+	});
 
 	// Poll authoritative state while connected and keep the live event stream open.
 	$effect(() => {
@@ -75,7 +88,7 @@
 				<LinkBanner />
 				{@render children()}
 			</div>
-		{:else}
+		{:else if connection.ready}
 			<ConnectCard />
 		{/if}
 	</main>

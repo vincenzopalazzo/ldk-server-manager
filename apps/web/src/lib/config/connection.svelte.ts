@@ -43,8 +43,17 @@ export function validateConnection(settings: ConnectionSettings): string | null 
 	return null;
 }
 
+/** Where the current connection came from. */
+export type ConnectionSource = 'saved' | 'bundle';
+
 class ConnectionStore {
 	settings = $state<ConnectionSettings | null>(load());
+	source = $state<ConnectionSource | null>(this.settings ? 'saved' : null);
+	/**
+	 * False until the startup check for a self-hosted bundle has finished, so the connect
+	 * screen does not flash before the bundle connects the app.
+	 */
+	ready = $state(this.settings !== null);
 
 	get isConfigured(): boolean {
 		return this.settings !== null;
@@ -53,11 +62,28 @@ class ConnectionStore {
 	save(settings: ConnectionSettings) {
 		const clean = { url: settings.url.trim().replace(/\/+$/, ''), apiKey: settings.apiKey.trim() };
 		this.settings = clean;
+		this.source = 'saved';
 		persist(clean);
+	}
+
+	/**
+	 * Connect with what the bundle serving this page provides. Kept in memory only: the bundle
+	 * is the source of truth and is read again on every load. A connection the operator saved
+	 * themselves always wins.
+	 */
+	useBundle(settings: ConnectionSettings) {
+		if (this.source === 'saved') return;
+		this.settings = settings;
+		this.source = 'bundle';
+	}
+
+	markReady() {
+		this.ready = true;
 	}
 
 	clear() {
 		this.settings = null;
+		this.source = null;
 		persist(null);
 	}
 }
