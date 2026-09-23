@@ -12,6 +12,16 @@
 name: ldk-node
 
 services:
+  init:
+    # On Linux, Docker creates a missing bind-mount source owned by root, and the services
+    # below run as uid 1000: create ./data's directories and hand them over first.
+    image: alpine:3.22
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /data/ldk /data/goose && chown 1000:1000 /data/ldk /data/goose"]
+    volumes:
+      - ./data:/data
+    restart: "no"
+
   ldk-server:
     build:
       context: ../docker/ldk-server
@@ -19,6 +29,8 @@ services:
     image: ldk-node/ldk-server:local
     command: ["/config/ldk-server.toml"]
     restart: unless-stopped
+    depends_on:
+      init: { condition: service_completed_successfully }
     # SIGTERM stops the node and persists channel state; don't cut it short.
     stop_grace_period: 3m
     environment:
@@ -45,6 +57,8 @@ services:
     build: https://github.com/vincenzopalazzo/goose-gateway.git#main
     image: ldk-node/goose-gateway:local
     restart: unless-stopped
+    depends_on:
+      init: { condition: service_completed_successfully }
     environment:
       # Only needed when the dashboard is reached through a public domain; IPs, localhost,
       # .local and .onion names are accepted automatically.
