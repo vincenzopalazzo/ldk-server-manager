@@ -74,9 +74,14 @@ async function toolsForTurn(nodeId: string | undefined): Promise<ToolSet> {
  * node info, balances and channels can still be the previous node's; refresh them, and report
  * false if they still do not match.
  */
+let snapshotNode: string | undefined;
+
 async function snapshotIsFor(nodeId: string | undefined): Promise<boolean> {
 	if (!nodeId) return true; // no connection: the snapshot says nothing about a node either
-	if (nodeInfo.data?.nodeId === nodeId) return true;
+	// Each part of the snapshot loads on its own, so node info can already be the new node's
+	// while balances or channels are not: after any change of node, reload them all first.
+	if (snapshotNode === nodeId && nodeInfo.data?.nodeId === nodeId) return true;
+	snapshotNode = undefined;
 	await Promise.all([
 		nodeInfo.refresh(),
 		balances.refresh(),
@@ -84,7 +89,9 @@ async function snapshotIsFor(nodeId: string | undefined): Promise<boolean> {
 		peers.refresh(),
 		payments.refresh()
 	]);
-	return nodeInfo.data?.nodeId === nodeId;
+	if (nodeInfo.data?.nodeId !== nodeId) return false;
+	snapshotNode = nodeId;
+	return true;
 }
 
 /**

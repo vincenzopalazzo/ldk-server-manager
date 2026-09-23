@@ -139,6 +139,20 @@ describe('node tools through the gateway', () => {
 		);
 	});
 
+	it('treats an unreadable success as an unknown outcome, not as done', async () => {
+		const doFetch = vi
+			.fn()
+			.mockResolvedValueOnce(
+				new Response('{"output": "cut o', { headers: { 'content-type': 'application/json' } })
+			)
+			.mockResolvedValueOnce(json({ unexpected: true }));
+		const set = nodeToolSet('/goose/v1', [tool('bolt11_send')], doFetch);
+		const cut = await set.run('bolt11_send', {});
+		expect(cut).toMatch(/^Unknown outcome: the gateway's answer could not be read/);
+		expect(set.report('bolt11_send', {}, cut)).toMatch(/outcome unknown/);
+		expect(await set.run('bolt11_send', {})).toMatch(/^Unknown outcome: /);
+	});
+
 	it('treats a refused request as a failure', async () => {
 		const doFetch = vi.fn().mockResolvedValue(json({ error: { message: 'no tools' } }, 404));
 		const set = nodeToolSet('/goose/v1', [tool('bolt11_send')], doFetch);

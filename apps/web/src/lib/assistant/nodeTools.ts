@@ -177,8 +177,12 @@ export function nodeToolSet(
 			// that ran; a 4xx means the gateway refused it before calling anything.
 			if (res.status >= 500) return `${UNKNOWN}${why}. ${CHECK_FIRST}`;
 			if (!res.ok) return `Error: ${why}`;
-			const output = typeof body?.output === 'string' ? body.output : '';
-			return body?.is_error === true ? `Error: ${output}` : output || '(no output)';
+			// A success whose answer cannot be read (cut off, malformed) says nothing about what
+			// happened: not a failure, and not a success either.
+			if (typeof body?.output !== 'string') {
+				return `${UNKNOWN}the gateway's answer could not be read. ${CHECK_FIRST}`;
+			}
+			return body.is_error === true ? `Error: ${body.output}` : body.output || '(no output)';
 		},
 		report: (name, input, output) => {
 			const call = describeNodeCall(name, input);
