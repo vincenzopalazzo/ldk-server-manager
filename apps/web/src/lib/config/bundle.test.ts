@@ -53,6 +53,16 @@ describe('loadBundle', () => {
 		).toBeNull();
 	});
 
+	it('gives up on a request that never answers', async () => {
+		const hang = vi.fn(
+			(_input: RequestInfo | URL, init?: RequestInit) =>
+				new Promise<Response>((_resolve, reject) =>
+					init?.signal?.addEventListener('abort', () => reject(init.signal?.reason))
+				)
+		);
+		expect(await loadBundle(origin, hang as unknown as typeof fetch, 20)).toBeNull();
+	});
+
 	it('treats a 404 or a network failure as no bundle', async () => {
 		expect(await loadBundle(origin, respond('{}', 'application/json', 404))).toBeNull();
 		expect(

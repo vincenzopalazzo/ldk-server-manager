@@ -48,12 +48,15 @@ export function parseBundle(raw: unknown, origin: string): Bundle | null {
  */
 export async function loadBundle(
 	origin: string,
-	doFetch: typeof fetch = (input, init) => globalThis.fetch(input, init)
+	doFetch: typeof fetch = (input, init) => globalThis.fetch(input, init),
+	/** The connect screen waits on this, so a proxy that never answers must not hang it. */
+	timeoutMs = 5000
 ): Promise<Bundle | null> {
 	try {
 		const res = await doFetch(new URL('/bundle.json', origin).href, {
 			cache: 'no-store',
-			credentials: 'same-origin'
+			credentials: 'same-origin',
+			signal: AbortSignal.timeout(timeoutMs)
 		});
 		if (!res.ok || !res.headers.get('content-type')?.includes('json')) return null;
 		return parseBundle(await res.json(), origin);
