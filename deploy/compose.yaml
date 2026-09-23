@@ -52,7 +52,7 @@ services:
       - ./data/ldk:/ldk:ro
 
   goose-gateway:
-    image: ghcr.io/vincenzopalazzo/goose-gateway:${GOOSE_GATEWAY_VERSION:-0.2.1}
+    image: ghcr.io/vincenzopalazzo/goose-gateway:${GOOSE_GATEWAY_VERSION:-0.2.2}
     restart: unless-stopped
     depends_on:
       init: { condition: service_completed_successfully }
