@@ -81,13 +81,17 @@ What to back up, and when:
 The rules that keep a restore from losing money:
 
 - **Never restore channel state older than what the node already has.** Old state can broadcast
-  revoked commitment transactions, which lets peers take the channel balance. `restore.sh`
-  compares the backup with the node's current database and refuses an older one; override
-  (`--replace-newer-state`) only when this machine's data is known to be lost or corrupt.
+  revoked commitment transactions, which lets peers take the channel balance. File times can't
+  tell which state is newer, so `restore.sh` refuses to restore over a machine that already
+  has channel state; override (`--replace-newer-state`) only when this machine's data is known
+  to be lost or corrupt.
 - **Never run the same node twice.** Moving machines: stop the old node for good, take a full
   backup there, restore it here.
 - **Restore moves the current data aside** (`data/ldk.replaced-<time>`), it never deletes it.
 
 ldk-server has no static channel backup or remote state storage yet, so the channel database
 backup is the only way to recover channel balances; keeping it current is on you. For
-replicated storage, ldk-server can keep channel state in PostgreSQL (`[storage.postgres]`).
+replicated storage, ldk-server can keep channel state in PostgreSQL (`[storage.postgres]`);
+then `backup.sh` refuses a full backup (there is no channel database to copy) and the database
+is yours to dump with `pg_dump` while the node is stopped. A `GOOSE_CONFIG_DIR` outside `data/`
+isn't backed up either; the script says so.

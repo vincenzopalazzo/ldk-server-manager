@@ -47,6 +47,13 @@ if ! docker run --rm -v "$(pwd):/stage/stack:ro" -v "$out_dir:/out" "$HELPER_IMA
     set -e
     cd /stage/stack
     db=\$(ls data/ldk/*/ldk_node_data.sqlite 2>/dev/null | head -n 1 || true)
+    if [ -z \"\$db\" ]; then
+        echo 'No channel database (data/ldk/<network>/ldk_node_data.sqlite): a full backup would' >&2
+        echo 'hold the seed but not the channel state. With [storage.postgres] in ldk-server.toml' >&2
+        echo 'the channels live in PostgreSQL: dump it with pg_dump while the node is stopped.' >&2
+        echo './backup.sh --seed-only saves just the seed.' >&2
+        exit 4
+    fi
     {
         echo created_at=$ts
         echo channel_db=\${db#data/}
@@ -69,5 +76,10 @@ else
     sum=$(shasum -a 256 "$out_dir/$archive" | cut -d' ' -f1)
 fi
 echo "Backup written: $out_dir/$archive ($(du -h "$out_dir/$archive" | cut -f1))"
+# compose.yaml mounts GOOSE_CONFIG_DIR instead of data/goose when .env sets it.
+goose_dir=${GOOSE_CONFIG_DIR:-$(sed -n 's/^GOOSE_CONFIG_DIR=//p' .env 2>/dev/null | tail -n 1)}
+if [ -n "$goose_dir" ] && [ "$goose_dir" != "./data/goose" ] && [ "$goose_dir" != "data/goose" ]; then
+    echo "Not included: the assistant's sign-ins in GOOSE_CONFIG_DIR ($goose_dir). Back that up yourself."
+fi
 echo "sha256: $sum"
 echo "It holds the node's seed and API key: keep it private and off this machine."

@@ -5,9 +5,10 @@
 #
 # Run it with the stack stopped (docker compose down). The current data is moved aside, not
 # deleted. Restoring channel state older than what the node already has can broadcast revoked
-# transactions and lose funds, so that is refused unless you pass --replace-newer-state, which
-# is only right when this machine's data is known to be bad or stale. Never run the same node on
-# two machines: stop the old one for good before restoring here.
+# transactions and lose funds, and file times cannot tell which state is newer, so restoring
+# over a machine that already has channel state is refused unless you pass
+# --replace-newer-state: only right when this machine's data is known to be bad or stale. Never
+# run the same node on two machines: stop the old one for good before restoring here.
 set -eu
 cd "$(dirname "$0")"
 
@@ -17,7 +18,7 @@ force=""
 for arg in "$@"; do
     case "$arg" in
         --replace-newer-state) force=1 ;;
-        -h | --help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h | --help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) echo "unknown option: $arg (try --help)" >&2; exit 2 ;;
         *) archive=$arg ;;
     esac
@@ -33,33 +34,30 @@ archive_dir=$(cd "$(dirname "$archive")" && pwd)
 archive_name=$(basename "$archive")
 ts=$(date -u +%Y%m%dT%H%M%SZ)
 
-docker run --rm -v "$(pwd):/stage/stack" -v "$archive_dir:/in:ro" -e FORCE="$force" "$HELPER_IMAGE" sh -c "
+docker run --rm -v "$(pwd):/stage/stack" -v "$archive_dir:/in:ro" -e FORCE="$force" -e ARCHIVE="/in/$archive_name" -e TS="$ts" "$HELPER_IMAGE" sh -c '
     set -e
     cd /stage/stack
-    tar -xzf /in/$archive_name -O BACKUP-INFO > /tmp/info 2>/dev/null || { echo 'Not a backup from ./backup.sh (no BACKUP-INFO).' >&2; exit 1; }
-    backup_db=\$(sed -n 's/^channel_db=//p' /tmp/info)
-    backup_mtime=\$(sed -n 's/^channel_db_mtime=//p' /tmp/info)
-    if [ -n \"\$backup_db\" ] && [ -f \"data/\$backup_db\" ] && [ -n \"\$backup_mtime\" ]; then
-        current_mtime=\$(stat -c %Y \"data/\$backup_db\")
-        if [ \"\$current_mtime\" -gt \"\$backup_mtime\" ] && [ -z \"\$FORCE\" ]; then
-            echo 'Refusing: this machine has newer channel state than the backup.' >&2
-            echo 'Restoring older channel state can lose funds. If the current data is known to be' >&2
-            echo 'bad, re-run with --replace-newer-state.' >&2
-            exit 3
-        fi
+    tar -xzf "$ARCHIVE" -O BACKUP-INFO > /tmp/info 2>/dev/null || { echo "Not a backup from ./backup.sh (no BACKUP-INFO)." >&2; exit 1; }
+    current=$(ls data/ldk/*/ldk_node_data.sqlite 2>/dev/null | head -n 1 || true)
+    if [ -n "$current" ] && [ -z "$FORCE" ]; then
+        echo "Refusing: this machine already has channel state ($current)." >&2
+        echo "Restoring an older state over it can lose funds, and file times cannot tell which" >&2
+        echo "is newer. If the current data is known to be bad or stale, re-run with" >&2
+        echo "--replace-newer-state." >&2
+        exit 3
     fi
-    tar -tzf /in/$archive_name > /tmp/contents
+    tar -tzf "$ARCHIVE" > /tmp/contents
     for p in data/ldk data/goose ldk-server.toml .env; do
-        if grep -q \"^stack/\$p\(/\|\$\)\" /tmp/contents && [ -e \"\$p\" ]; then
-            if mv \"\$p\" \"\$p.replaced-$ts\"; then
-                echo \"Moved current \$p to \$p.replaced-$ts\"
-            elif [ -e \"\$p\" ]; then
-                echo \"Could not move \$p aside; nothing was restored.\" >&2
+        if grep -q "^stack/$p\(/\|\$\)" /tmp/contents && [ -e "$p" ]; then
+            if mv "$p" "$p.replaced-$TS"; then
+                echo "Moved current $p to $p.replaced-$TS"
+            elif [ -e "$p" ]; then
+                echo "Could not move $p aside; nothing was restored." >&2
                 exit 1
             fi
         fi
     done
-    tar -xzpf /in/$archive_name -C /stage
-    echo \"Restored \$(sed -n 's/^created_at=//p' /tmp/info) backup.\""
+    tar -xzpf "$ARCHIVE" -C /stage
+    echo "Restored $(sed -n "s/^created_at=//p" /tmp/info) backup."'
 
 echo "Start the stack again: docker compose up -d"
