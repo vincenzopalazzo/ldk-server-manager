@@ -1,0 +1,27 @@
+# ldk-server settings for the stack. Copy to ldk-server.toml and edit.
+#
+# Most settings can also be given as LDK_SERVER_* variables in compose.yaml; the ones below
+# have no variable. See https://github.com/lightningdevkit/ldk-server/blob/main/docs/configuration.md
+
+[node]
+# bitcoin (mainnet), testnet, signet or regtest.
+network = "signet"
+# For a public routing node, the address peers can reach you at. Without it the node announces
+# its listening address (0.0.0.0:9735), which is fine for a private node.
+# announcement_addresses = ["node.example.com:9735"]
+
+[tls]
+# The name the other containers use to reach the node; must be in its certificate.
+hosts = ["ldk-server"]
+
+# Exactly one chain backend.
+#
+# Your own Bitcoin Core is the recommended backend for mainnet, and required for a public node:
+# [bitcoind]
+# rpc_address = "host.docker.internal:8332"   # or your node's LAN address
+# rpc_user = "..."
+# rpc_password = "..."
+#
+# Electrum or Esplora are simpler but trust a third party with your chain view:
+[esplora]
+server_url = "https://blockstream.info/signet/api"
