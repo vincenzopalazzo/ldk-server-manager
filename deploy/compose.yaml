@@ -24,7 +24,7 @@ services:
 
   ldk-server:
     # https://github.com/vincenzopalazzo/ldk-node-bundle
-    image: ghcr.io/vincenzopalazzo/ldk-server:${LDK_SERVER_VERSION:-0.1.1}
+    image: ghcr.io/vincenzopalazzo/ldk-server:${LDK_SERVER_VERSION:-0.1.0-dbe22c5}
     command: ["/config/ldk-server.toml"]
     restart: unless-stopped
     depends_on:
@@ -88,7 +88,7 @@ services:
     # goose-gateway with ldk-server-mcp beside it, so the assistant can use the node's own
     # tools. It does no approval itself (the dashboard asks before anything that moves funds),
     # so it is reachable only through the web container.
-    image: ${ASSISTANT_IMAGE:-ghcr.io/vincenzopalazzo/ldk-node-assistant:0.2.0}
+    image: ${ASSISTANT_IMAGE:-ghcr.io/vincenzopalazzo/ldk-node-assistant:0.2.1}
     restart: unless-stopped
     depends_on:
       init: { condition: service_completed_successfully }
