@@ -38,8 +38,11 @@ LDK_SERVER_HOST=127.0.0.1 LDK_SERVER_PORT=3536 docker compose -f docker-compose.
 ```
 
 Open http://127.0.0.1:8080 and choose `<storage_dir>/<network>/macaroons/admin.macaroon`.
-The file is already hex text. The published `0.1.0` images still speak the old
-API key. Do not point this page at one of those nodes.
+The file is already hex text. The assistant is goose on http://127.0.0.1:8791,
+which the page uses by default. Sign in from its panel. Sign-ins stay in
+`data/goose`. The published `0.1.0` images still speak the old API key, and the
+published `ldk-server-mcp` still reads that key, so this compose does not give
+goose the node's tools. Do not point this page at a `0.1.0` node.
 
 For UI work without the container:
 
