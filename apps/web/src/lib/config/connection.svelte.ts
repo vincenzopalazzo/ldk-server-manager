@@ -1,11 +1,12 @@
 import { browser } from '$app/environment';
+import { macaroonTextError } from './macaroon-file';
 
 /** Connection settings for one ldk-server instance (via a gRPC-Web bridge). */
 export interface ConnectionSettings {
 	/** Base URL of the gRPC-Web endpoint, e.g. https://node.example:8080 */
 	url: string;
-	/** ldk-server API key used to HMAC-sign every request. */
-	apiKey: string;
+	/** Hex-encoded reusable v2 macaroon. A request-bound copy is sent on each call. */
+	macaroon: string;
 }
 
 const STORAGE_KEY = 'ldk-server-manager:connection';
@@ -16,8 +17,10 @@ function load(): ConnectionSettings | null {
 		const raw = localStorage.getItem(STORAGE_KEY);
 		if (!raw) return null;
 		const parsed = JSON.parse(raw) as Partial<ConnectionSettings>;
-		if (typeof parsed.url !== 'string' || typeof parsed.apiKey !== 'string') return null;
-		return { url: parsed.url, apiKey: parsed.apiKey };
+		// An old HMAC apiKey cannot authenticate to a macaroon server. Drop it so the
+		// operator pastes admin.macaroon instead of sending a key the node will reject.
+		if (typeof parsed.url !== 'string' || typeof parsed.macaroon !== 'string') return null;
+		return { url: parsed.url, macaroon: parsed.macaroon };
 	} catch {
 		return null;
 	}
@@ -39,8 +42,8 @@ export function validateConnection(settings: ConnectionSettings): string | null 
 	if (!URL.canParse(settings.url)) return 'Server URL is not a valid URL';
 	if (!/^https?:\/\//i.test(settings.url.trim()))
 		return 'Server URL must start with http:// or https://';
-	if (!settings.apiKey.trim()) return 'API key is required';
-	return null;
+	if (!settings.macaroon.trim()) return 'Macaroon is required';
+	return macaroonTextError(settings.macaroon);
 }
 
 /** Where the current connection came from. */
@@ -63,7 +66,10 @@ class ConnectionStore {
 	private changes = 0;
 
 	save(settings: ConnectionSettings) {
-		const clean = { url: settings.url.trim().replace(/\/+$/, ''), apiKey: settings.apiKey.trim() };
+		const clean = {
+			url: settings.url.trim().replace(/\/+$/, ''),
+			macaroon: settings.macaroon.trim()
+		};
 		this.settings = clean;
 		this.source = 'saved';
 		this.changes++;

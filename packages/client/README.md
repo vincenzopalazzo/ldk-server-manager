@@ -4,12 +4,12 @@ Browser-side TypeScript client for [ldk-server](https://github.com/lightningdevk
 
 - Types generated from the upstream `.proto` files with `protoc-gen-es` (`pnpm generate`).
 - gRPC-Web wire format over `fetch`, including server-streaming for `SubscribeEvents`.
-- ldk-server HMAC authentication (`x-auth: HMAC <ts>:<hex>`) computed with WebCrypto.
+- ldk-server macaroon authentication (`macaroon` header) computed with WebCrypto.
 
 ```ts
 import { LdkServerClient } from '@ldk-server-manager/client';
 
-const client = new LdkServerClient({ baseUrl: 'https://bridge.example:8080', apiKey: '...' });
+const client = new LdkServerClient({ baseUrl: 'https://bridge.example:8080', macaroon: '...' });
 const info = await client.api.getNodeInfo();
 for await (const event of client.subscribeEvents()) console.log(event);
 ```

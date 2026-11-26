@@ -36,7 +36,7 @@ needs no emulation.
 ## ldk-server
 
 - **Data:** mount a volume at `/data`. It holds the mnemonic (`keys_mnemonic`), the TLS
-  certificate and key, `<network>/api_key` and the channel database. Back up the mnemonic.
+  certificate and key, `<network>/macaroons/admin.macaroon` and the channel database. Back up the mnemonic.
   Never restore an old channel database or run the same node twice. See ldk-server's
   [operations guide](https://github.com/lightningdevkit/ldk-server/blob/main/docs/operations.md#backups).
 - **Settings:** `LDK_SERVER_*` environment variables (`ldk-server --help` lists them). The image
@@ -66,12 +66,12 @@ needs no emulation.
 ## ldk-server-mcp
 
 Speaks MCP over stdio, so run it with stdin attached (`docker run -i`). It needs the node's
-address, API key (hex) and certificate:
+address, admin macaroon (hex text) and certificate:
 
 ```bash
 docker run --rm -i --network <stack network> -v <node data>:/ldk:ro \
   -e LDK_BASE_URL=ldk-server:3536 \
-  -e LDK_API_KEY=<hex api key> \
+  -e LDK_MACAROON=<hex admin.macaroon> \
   -e LDK_TLS_CERT_PATH=/ldk/tls.crt \
   ldk-server-mcp
 ```
@@ -95,7 +95,7 @@ restarting nginx.
 | Variable          | Effect |
 | ----------------- | ------ |
 | `AUTH_USER`, `AUTH_HASH` | Basic auth for everything. `AUTH_HASH` is a crypt(3) hash, e.g. bcrypt from `htpasswd -nbB user password`. |
-| `BUNDLE_API_KEY=true` | Serve `/bundle.json` with the node's API key, read from `/ldk/*/api_key` (mount the node's data read-only at `/ldk`, or set `LDK_API_KEY_FILE`). It hands out node control: only behind basic auth or a platform login. The file is `0400`, so run the container as the node's user (`user: "1000:0"`). |
+| `BUNDLE_API_KEY=true` | Serve `/bundle.json` with the node's admin macaroon, read as text from `/ldk/*/macaroons/admin.macaroon` (mount the node's data read-only at `/ldk`, or set `LDK_MACAROON_FILE`). It hands out node control: only behind basic auth or a platform login. The file is `0400`, so run the container as the node's user (`user: "1000:0"`). |
 
 ## gRPC-Web bridge
 
@@ -106,7 +106,7 @@ give it `restart: on-failure` and it comes up once the node has created the cert
 
 ## Tested
 
-On arm64 against a signet node: the dashboard's own client made HMAC-signed gRPC-Web calls
+On arm64 against a signet node: the dashboard's own client made authenticated gRPC-Web calls
 through web → Envoy → ldk-server (node info, balances, wrong key rejected), and
 `ldk-server-mcp` answered `get_node_info` and `get_balances` over stdio. goose-gateway served
 its provider API and streamed server-sent events through web's `/goose/` without buffering.

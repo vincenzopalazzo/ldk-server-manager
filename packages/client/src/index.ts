@@ -1,7 +1,7 @@
 export { LdkServerClient, type LdkServerApi, type LdkServerClientOptions } from './client.js';
 export { GrpcWebTransport, type TransportOptions } from './transport.js';
 export { LdkServerError, GrpcCode, grpcCodeName } from './errors.js';
-export { computeAuthHmac, buildAuthHeader } from './auth.js';
+export { bindMacaroonToRequest, buildMacaroonHeader } from './auth.js';
 export { encodeFrame, FrameReader, parseTrailers } from './framing.js';
 
 export * from './gen/api_pb.js';

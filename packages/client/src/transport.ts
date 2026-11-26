@@ -1,14 +1,14 @@
 import type { DescMethodUnary, DescMethodServerStreaming, MessageInitShape, MessageShape } from '@bufbuild/protobuf';
 import { create, fromBinary, toBinary } from '@bufbuild/protobuf';
-import { buildAuthHeader } from './auth.js';
+import { buildMacaroonHeader } from './auth.js';
 import { GrpcCode, LdkServerError } from './errors.js';
 import { encodeFrame, FrameReader, FLAG_TRAILERS, parseTrailers, decodeGrpcMessage } from './framing.js';
 
 export interface TransportOptions {
 	/** Base URL of the ldk-server gRPC-Web endpoint, e.g. `https://localhost:3536`. */
 	baseUrl: string;
-	/** API key configured in ldk-server (`[api] key`). Used for HMAC signing. */
-	apiKey: string;
+	/** Hex-encoded reusable v2 macaroon. A request-bound copy is sent on each call. */
+	macaroon: string;
 	/** Custom fetch implementation (defaults to globalThis.fetch). */
 	fetch?: typeof fetch;
 	/** Clock override, mainly for tests. Returns milliseconds since epoch. */
@@ -20,23 +20,23 @@ export interface TransportOptions {
 const CONTENT_TYPE = 'application/grpc-web+proto';
 
 /**
- * Minimal gRPC-Web transport with ldk-server HMAC authentication.
+ * Minimal gRPC-Web transport with ldk-server macaroon authentication.
  *
  * ldk-server speaks native gRPC (HTTP/2 + trailers), which browsers cannot consume
  * directly. This transport emits the gRPC-Web wire format, whose request body bytes
- * are identical to native gRPC, so the HMAC signature computed here stays valid after
- * a gRPC-Web bridge (e.g. Envoy) translates the request.
+ * are identical to native gRPC, so the request-bound macaroon computed here stays valid
+ * after a gRPC-Web bridge (e.g. Envoy) translates the request.
  */
 export class GrpcWebTransport {
 	private readonly baseUrl: string;
-	private readonly apiKey: string;
+	private readonly macaroon: string;
 	private readonly fetchImpl: typeof fetch;
 	private readonly now: () => number;
 	private readonly timeoutMs: number;
 
 	constructor(opts: TransportOptions) {
 		this.baseUrl = opts.baseUrl.replace(/\/+$/, '');
-		this.apiKey = opts.apiKey;
+		this.macaroon = opts.macaroon;
 		this.fetchImpl = opts.fetch ?? ((input, init) => globalThis.fetch(input, init));
 		this.now = opts.now ?? (() => Date.now());
 		this.timeoutMs = opts.timeoutMs ?? 30_000;
@@ -49,7 +49,7 @@ export class GrpcWebTransport {
 	): Promise<{ url: string; init: RequestInit }> {
 		const message = create(method.input, input);
 		const body = encodeFrame(toBinary(method.input, message));
-		const auth = await buildAuthHeader(this.apiKey, body, this.now);
+		const macaroon = await buildMacaroonHeader(this.macaroon, method.name, body, this.now);
 		const url = `${this.baseUrl}/${method.parent.typeName}/${method.name}`;
 		return {
 			url,
@@ -59,7 +59,7 @@ export class GrpcWebTransport {
 					'content-type': CONTENT_TYPE,
 					accept: CONTENT_TYPE,
 					'x-grpc-web': '1',
-					'x-auth': auth
+					macaroon
 				},
 				body,
 				signal

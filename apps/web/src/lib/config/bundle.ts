@@ -1,8 +1,8 @@
 /**
  * Connection details a self-hosted bundle serves next to the dashboard, at `/bundle.json`
  * (see docker/web). When present, the dashboard connects to its own node and gateway without
- * the operator pasting an API key. The bundle only serves it behind a login, since it carries
- * the key.
+ * the operator pasting a macaroon. The bundle only serves it behind a login, since it carries
+ * the credential.
  */
 
 export interface Bundle {
@@ -10,12 +10,12 @@ export interface Bundle {
 	nodeUrl: string;
 	/** OpenAI-compatible base URL of goose-gateway. */
 	gatewayUrl: string;
-	/** ldk-server API key, hex. */
-	apiKey: string;
+	/** Hex-encoded reusable v2 macaroon. */
+	macaroon: string;
 }
 
-/** An ldk-server API key: 32 random bytes, hex encoded. */
-const API_KEY = /^[0-9a-f]{64}$/i;
+/** A v2 macaroon: even-length hex starting with the version byte. */
+const MACAROON = /^02(?:[0-9a-f]{2}){16,2047}$/i;
 
 /**
  * Validate what `/bundle.json` returned and resolve its URLs against the page's origin: an
@@ -25,7 +25,7 @@ const API_KEY = /^[0-9a-f]{64}$/i;
 export function parseBundle(raw: unknown, origin: string): Bundle | null {
 	if (typeof raw !== 'object' || raw === null) return null;
 	const b = raw as Record<string, unknown>;
-	if (typeof b.apiKey !== 'string' || !API_KEY.test(b.apiKey)) return null;
+	if (typeof b.macaroon !== 'string' || !MACAROON.test(b.macaroon.trim())) return null;
 	const resolve = (value: unknown, fallback: string): string | null => {
 		const v = typeof value === 'string' && value.trim() ? value.trim() : fallback;
 		try {
@@ -39,14 +39,14 @@ export function parseBundle(raw: unknown, origin: string): Bundle | null {
 	const nodeUrl = resolve(b.nodeUrl, origin);
 	const gatewayUrl = resolve(b.gatewayUrl, '/goose/v1');
 	if (!nodeUrl || !gatewayUrl) return null;
-	return { nodeUrl, gatewayUrl, apiKey: b.apiKey.toLowerCase() };
+	return { nodeUrl, gatewayUrl, macaroon: b.macaroon.trim().toLowerCase() };
 }
 
 /** One look at `/bundle.json`: the bundle, and whether it is worth looking again. */
 export interface BundleProbe {
 	bundle: Bundle | null;
 	/**
-	 * The bundle's nginx answers 404 until the node has written its API key on a fresh stack,
+	 * The bundle's nginx answers 404 until the node has written its admin macaroon on a fresh stack,
 	 * so a 404 may turn into a bundle. A static host answers with the app's HTML instead, and a
 	 * malformed file stays malformed: neither is retried.
 	 */
@@ -90,7 +90,7 @@ export async function loadBundle(
 
 /**
  * Look for the bundle until it appears, while `keepLooking()` holds, a few minutes at most:
- * a page opened on a fresh stack keeps waiting for the node's key instead of staying on the
+ * a page opened on a fresh stack keeps waiting for the node's macaroon instead of staying on the
  * connect screen until reloaded. `afterFirst` runs once the first answer is in, so the
  * connect screen is not held back while it waits.
  */

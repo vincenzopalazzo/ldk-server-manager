@@ -24,7 +24,7 @@
 	let { children }: { children: Snippet } = $props();
 
 	// A self-hosted bundle serves its own connection details next to the page: use them, so
-	// the operator never pastes an API key. Elsewhere (the public site) there is no bundle.
+	// the operator never pastes a macaroon. Elsewhere (the public site) there is no bundle.
 	onMount(() => {
 		const applyBundle = connection.beginBundleProbe();
 		let mounted = true;
@@ -34,7 +34,7 @@
 			afterFirst: () => connection.markReady()
 		}).then((bundle) => {
 			if (bundle) {
-				applyBundle({ url: bundle.nodeUrl, apiKey: bundle.apiKey });
+				applyBundle({ url: bundle.nodeUrl, macaroon: bundle.macaroon });
 				assistantConfig.bundleGateway = bundle.gatewayUrl;
 			}
 		});

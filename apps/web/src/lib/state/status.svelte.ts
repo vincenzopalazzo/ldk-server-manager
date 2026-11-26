@@ -6,7 +6,7 @@ export type LinkState =
 	| 'disconnected'
 	/** Configured, first responses not in yet. */
 	| 'connecting'
-	/** The node rejected the API key. */
+	/** The node rejected the macaroon. */
 	| 'unauthorized'
 	/** The node or its bridge could not be reached. */
 	| 'unreachable'
@@ -43,7 +43,7 @@ class NodeLink {
 	get title(): string | null {
 		switch (this.state) {
 			case 'unauthorized':
-				return 'The node rejected this API key';
+				return 'The node rejected this macaroon';
 			case 'unreachable':
 				return 'Cannot reach the node';
 			case 'error':
@@ -57,7 +57,7 @@ class NodeLink {
 	get hint(): string | null {
 		switch (this.state) {
 			case 'unauthorized':
-				return 'The key is the hex form of <storage_dir>/<network>/api_key on the node, e.g. `xxd -p -c 64 ~/.ldk-server/bitcoin/api_key`. Save it again in Settings. Amounts stay hidden until the node answers, so nothing below reflects your balance.';
+				return 'Paste the hex text of <storage_dir>/<network>/macaroons/admin.macaroon. Do not hex-encode it again, and do not use the old HMAC api_key. Save it again in Settings. Amounts stay hidden until the node answers, so nothing below reflects your balance.';
 			case 'unreachable':
 				return 'Check that the gRPC-Web bridge is running and reachable at the configured URL, and that the node behind it is up.';
 			case 'error':

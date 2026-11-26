@@ -1,36 +1,37 @@
 import { describe, expect, it, vi } from 'vitest';
 import { loadBundle, parseBundle, probeBundle, waitForBundle } from './bundle';
 
-const key = 'ab'.repeat(32);
+const macaroon =
+	'0201000207746573742d6964000006203846eea2ed59d53650493222c2380a3540668ade20044e28f9cb1e0b5b4e4429';
 const origin = 'http://umbrel.local:2150';
 
 describe('parseBundle', () => {
 	it('resolves an empty node URL and a gateway path against the page origin', () => {
-		expect(parseBundle({ nodeUrl: '', gatewayUrl: '/goose/v1', apiKey: key }, origin)).toEqual({
+		expect(parseBundle({ nodeUrl: '', gatewayUrl: '/goose/v1', macaroon }, origin)).toEqual({
 			nodeUrl: 'http://umbrel.local:2150',
 			gatewayUrl: 'http://umbrel.local:2150/goose/v1',
-			apiKey: key
+			macaroon
 		});
 	});
 
 	it('defaults a missing gateway to /goose/v1 and keeps absolute URLs', () => {
 		const b = parseBundle(
-			{ nodeUrl: 'https://node.example:8080/', apiKey: key.toUpperCase() },
+			{ nodeUrl: 'https://node.example:8080/', macaroon: macaroon.toUpperCase() },
 			origin
 		);
 		expect(b).toEqual({
 			nodeUrl: 'https://node.example:8080',
 			gatewayUrl: 'http://umbrel.local:2150/goose/v1',
-			apiKey: key
+			macaroon
 		});
 	});
 
-	it('rejects anything that is not a 32-byte hex key or an http(s) URL', () => {
+	it('rejects a non-macaroon credential or a non-http URL', () => {
 		expect(parseBundle(null, origin)).toBeNull();
 		expect(parseBundle('<!doctype html>', origin)).toBeNull();
-		expect(parseBundle({ apiKey: 'abc' }, origin)).toBeNull();
-		expect(parseBundle({ apiKey: 'zz'.repeat(32) }, origin)).toBeNull();
-		expect(parseBundle({ apiKey: key, nodeUrl: 'javascript:alert(1)' }, origin)).toBeNull();
+		expect(parseBundle({ macaroon: 'abc' }, origin)).toBeNull();
+		expect(parseBundle({ macaroon: 'ab'.repeat(32) }, origin)).toBeNull();
+		expect(parseBundle({ macaroon, nodeUrl: 'javascript:alert(1)' }, origin)).toBeNull();
 	});
 });
 
@@ -40,10 +41,10 @@ describe('loadBundle', () => {
 
 	it('reads the bundle from the page origin', async () => {
 		const fetch = respond(
-			JSON.stringify({ nodeUrl: '', gatewayUrl: '/goose/v1', apiKey: key }),
+			JSON.stringify({ nodeUrl: '', gatewayUrl: '/goose/v1', macaroon }),
 			'application/json'
 		);
-		expect((await loadBundle(origin, fetch))?.apiKey).toBe(key);
+		expect((await loadBundle(origin, fetch))?.macaroon).toBe(macaroon);
 		expect(fetch.mock.calls[0][0]).toBe('http://umbrel.local:2150/bundle.json');
 	});
 
@@ -72,7 +73,7 @@ describe('loadBundle', () => {
 });
 
 describe('waitForBundle', () => {
-	const bundleBody = JSON.stringify({ nodeUrl: '', gatewayUrl: '/goose/v1', apiKey: key });
+	const bundleBody = JSON.stringify({ nodeUrl: '', gatewayUrl: '/goose/v1', macaroon });
 	const answers = (...rs: Response[]) => {
 		const f = vi.fn();
 		for (const r of rs) f.mockResolvedValueOnce(r);
@@ -92,7 +93,7 @@ describe('waitForBundle', () => {
 			fetch,
 			intervalMs: 1
 		});
-		expect(b?.apiKey).toBe(key);
+		expect(b?.macaroon).toBe(macaroon);
 		expect(fetch).toHaveBeenCalledTimes(3);
 		expect(afterFirst).toHaveBeenCalledTimes(1);
 	});
@@ -131,6 +132,6 @@ describe('waitForBundle', () => {
 	it('only a 404 is worth another look', async () => {
 		expect((await probeBundle(origin, answers(notYet()))).retry).toBe(true);
 		expect((await probeBundle(origin, answers(shell()))).retry).toBe(false);
-		expect((await probeBundle(origin, answers(ready()))).bundle?.apiKey).toBe(key);
+		expect((await probeBundle(origin, answers(ready()))).bundle?.macaroon).toBe(macaroon);
 	});
 });
