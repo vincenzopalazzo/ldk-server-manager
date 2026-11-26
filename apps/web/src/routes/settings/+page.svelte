@@ -3,6 +3,7 @@
 	import { Button, Card, Field, Input } from '@ldk-server-manager/ui';
 	import { nodeInfo } from '$lib/state/node.svelte';
 	import { connection, validateConnection } from '$lib/config/connection.svelte';
+	import { macaroonFromText } from '$lib/config/macaroon-file';
 	import { showToast } from '$lib/state/toast.svelte';
 	import { relativeTime, truncateId } from '$lib/utils/format';
 	import AssistantStatusCard from '$lib/components/AssistantStatusCard.svelte';
@@ -36,7 +37,8 @@
 	]);
 
 	let url = $state(connection.settings?.url ?? '');
-	let apiKey = $state('');
+	let macaroon = $state('');
+	let fileInput = $state<HTMLInputElement | null>(null);
 
 	async function copyNodeId() {
 		if (!info?.nodeId) return;
@@ -48,12 +50,26 @@
 		}
 	}
 
+	async function onMacaroonFile(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file) return;
+		try {
+			macaroon = macaroonFromText(await file.text());
+			showToast('Macaroon file loaded');
+		} catch (e) {
+			macaroon = '';
+			showToast(e instanceof Error ? e.message : 'Could not read macaroon file');
+		}
+	}
+
 	function save() {
-		const key = apiKey.trim() || connection.settings?.apiKey || '';
-		const err = validateConnection({ url, apiKey: key });
+		const key = macaroon.trim() || connection.settings?.macaroon || '';
+		const err = validateConnection({ url, macaroon: key });
 		if (err) return showToast(err);
-		connection.save({ url, apiKey: key });
-		apiKey = '';
+		connection.save({ url, macaroon: key });
+		macaroon = '';
 		showToast('Connection updated');
 		void nodeInfo.refresh();
 	}
@@ -103,18 +119,29 @@
 		<div class="api">
 			Connected to ldk-server through a gRPC-Web bridge at <span class="mono ink"
 				>{connection.settings?.url}</span
-			>. Requests are signed with HMAC-SHA256 <span class="mono ink">x-auth</span> headers.
+			>. Each request carries a macaroon bound to that call in the
+			<span class="mono ink">macaroon</span> header.
 			{#if connection.source === 'bundle'}
 				The server hosting this page provided the connection; nothing is stored in this browser.
 				Saving a connection here replaces it with your own.
 			{:else}
-				The API key is stored only in this browser.
+				The reusable macaroon is stored only in this browser.
 			{/if}
 		</div>
 		<div class="form">
 			<Field label="Bridge URL"><Input bind:value={url} mono /></Field>
-			<Field label="API key"
-				><Input bind:value={apiKey} mono type="password" placeholder="unchanged" /></Field
+			<button type="button" class="file" onclick={() => fileInput?.click()}>
+				Choose admin.macaroon
+			</button>
+			<input
+				bind:this={fileInput}
+				class="hidden"
+				type="file"
+				accept=".macaroon,.txt,text/plain"
+				onchange={onMacaroonFile}
+			/>
+			<Field label="Macaroon"
+				><Input bind:value={macaroon} mono type="password" placeholder="unchanged" /></Field
 			>
 		</div>
 		<div class="btns">
@@ -200,6 +227,21 @@
 	}
 	.ink {
 		color: var(--ink);
+	}
+	.file {
+		align-self: flex-start;
+		margin-top: 8px;
+		background: none;
+		border: none;
+		padding: 0;
+		font: inherit;
+		font-size: 12.5px;
+		color: inherit;
+		text-decoration: underline;
+		cursor: pointer;
+	}
+	.hidden {
+		display: none;
 	}
 	.form {
 		display: flex;

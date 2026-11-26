@@ -2,8 +2,8 @@
 #
 # Browsers cannot speak native gRPC (HTTP/2 trailers), so the web UI talks
 # gRPC-Web to this proxy, which forwards native gRPC to ldk-server over TLS.
-# Request body bytes are passed through unchanged, so the HMAC signature the
-# browser computes over the gRPC frame stays valid.
+# Request body bytes are passed through unchanged, so the request-bound macaroon
+# the browser computes over the gRPC frame stays valid.
 #
 # Usage (from the repository root, see docker-compose.yml there):
 #   1. Copy ldk-server's self-signed certificate to contrib/grpc-web-bridge/ldk-server-tls.crt
@@ -40,7 +40,7 @@ static_resources:
                           allow_origin_string_match:
                             - safe_regex: { regex: ".*" }
                           allow_methods: "GET, POST, OPTIONS"
-                          allow_headers: "content-type, x-grpc-web, x-auth, x-user-agent, grpc-timeout"
+                          allow_headers: "content-type, x-grpc-web, macaroon, x-user-agent, grpc-timeout"
                           expose_headers: "grpc-status, grpc-message"
                           max_age: "1728000"
                 http_filters:

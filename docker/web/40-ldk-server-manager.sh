@@ -18,31 +18,35 @@ else
     echo "40-ldk-server-manager: basic auth off (set AUTH_USER and AUTH_HASH to turn it on)"
 fi
 
-# /bundle.json: lets the dashboard connect without the user pasting the API key. Off unless
-# BUNDLE_API_KEY=true, because it hands the key to whoever can load the page.
+# /bundle.json: lets the dashboard connect without the user pasting the macaroon. Off unless
+# BUNDLE_API_KEY=true, because it hands the credential to whoever can load the page.
 #
-# ldk-server writes <storage>/<network>/api_key on its first start, which can take a while (a
-# chain backend still syncing, a restart loop over bad config). So nginx starts right away and
-# a background loop writes the file once the key is readable, and again if it ever changes.
+# ldk-server writes <storage>/<network>/macaroons/admin.macaroon on its first start, which can
+# take a while (a chain backend still syncing, a restart loop over bad config). So nginx starts
+# right away and a background loop writes the file once the macaroon is readable, and again if
+# it ever changes. The file is already hex text; do not encode it again.
 rm -f /tmp/ldk/bundle.json
 if [ "${BUNDLE_API_KEY:-false}" = "true" ]; then
     write_bundle() {
-        key_file="${LDK_API_KEY_FILE:-}"
-        if [ -z "$key_file" ]; then
-            key_file=$(ls /ldk/*/api_key 2>/dev/null | head -n 1 || true)
+        macaroon_file="${LDK_MACAROON_FILE:-}"
+        if [ -z "$macaroon_file" ]; then
+            macaroon_file=$(ls /ldk/*/macaroons/admin.macaroon 2>/dev/null | head -n 1 || true)
         fi
-        [ -n "$key_file" ] && [ -r "$key_file" ] || return 1
-        key_hex=$(od -An -v -tx1 "$key_file" | tr -d ' \n')
-        [ -n "$key_hex" ] || return 1
-        body=$(printf '{"nodeUrl":"","gatewayUrl":"/goose/v1","apiKey":"%s"}' "$key_hex")
+        [ -n "$macaroon_file" ] && [ -r "$macaroon_file" ] || return 1
+        macaroon=$(tr -d ' \t\r\n' < "$macaroon_file" | tr 'A-F' 'a-f')
+        case "$macaroon" in
+            02*) ;;
+            *) return 1 ;;
+        esac
+        body=$(printf '{"nodeUrl":"","gatewayUrl":"/goose/v1","macaroon":"%s"}' "$macaroon")
         if [ "$(cat /tmp/ldk/bundle.json 2>/dev/null)" != "$body" ]; then
             printf '%s\n' "$body" > /tmp/ldk/bundle.json.tmp
             mv /tmp/ldk/bundle.json.tmp /tmp/ldk/bundle.json
-            echo "40-ldk-server-manager: /bundle.json ready from ${key_file}"
+            echo "40-ldk-server-manager: /bundle.json ready from ${macaroon_file}"
         fi
     }
     if ! write_bundle; then
-        echo "40-ldk-server-manager: waiting for the node's api_key (${LDK_API_KEY_FILE:-/ldk/*/api_key}); /bundle.json appears once it exists"
+        echo "40-ldk-server-manager: waiting for the node's admin.macaroon (${LDK_MACAROON_FILE:-/ldk/*/macaroons/admin.macaroon}); /bundle.json appears once it exists"
     fi
     ( while :; do sleep 5; write_bundle || true; done ) &
 fi

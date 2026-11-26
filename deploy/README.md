@@ -10,7 +10,7 @@ cp .env.example .env                          # optional: alias, ports, basic au
 docker compose up -d
 ```
 
-Open http://127.0.0.1:8080. The dashboard connects to the node by itself; no API key to paste.
+Open http://127.0.0.1:8080. The dashboard connects to the node by itself; no macaroon to paste.
 
 ## What runs
 
@@ -20,7 +20,7 @@ Open http://127.0.0.1:8080. The dashboard connects to the node by itself; no API
 | `ldk-server`      | the Lightning node             | peers on `9735`; gRPC only inside the stack   |
 | `grpc-web-bridge` | Envoy, gRPC-Web to gRPC        | inside the stack, through `web`               |
 | `goose-gateway`   | the assistant: goose gateway + ldk-server-mcp | inside the stack, through `web` at `/goose/` |
-| `init`, `credentials` | one-shot helpers           | prepare `data/`, and copy the node's TLS certificate and API key (not its seed) into the `node-client` volume the other services mount |
+| `init`, `credentials` | one-shot helpers           | prepare `data/`, and copy the node's TLS certificate and admin macaroon (not its seed) into the `node-client` volume the other services mount |
 
 The images are published multi-arch (amd64, arm64) on ghcr.io and pinned by version in
 `compose.yaml`; change them in `.env`. See [`docker/README.md`](../docker/README.md) for what each
@@ -60,7 +60,7 @@ Everything lives in `data/`:
 
 - `data/ldk/keys_mnemonic`: the node's seed. Recovers on-chain funds.
 - `data/ldk/<network>/ldk_node_data.sqlite`: channel state. Recovers channel funds.
-- `data/ldk/<network>/api_key`, `tls.crt`, `tls.key`: regenerated if lost; clients re-pair.
+- `data/ldk/<network>/macaroons/admin.macaroon`, `tls.crt`, `tls.key`: regenerated if lost; clients re-pair.
 - `data/goose`: the assistant's sign-ins and keys.
 
 Stop with `docker compose down`; the node gets up to 3 minutes to persist its state.
@@ -74,7 +74,7 @@ Stop with `docker compose down`; the node gets up to 3 minutes to persist its st
 ```
 
 Archives go to `backups/` (or `$BACKUP_DIR`), readable only by you. They hold the seed and the
-API key: copy them off this machine and keep them private.
+admin macaroon: copy them off this machine and keep them private.
 
 What to back up, and when:
 

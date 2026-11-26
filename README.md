@@ -4,8 +4,8 @@ A fully client-side web UI for operating an [ldk-server](https://github.com/ligh
 Lightning node: balances, channels, peers, payments, invoices, and the live event feed.
 
 Built with Svelte 5, SvelteKit (static adapter, SPA mode) and TypeScript. Nothing runs on a
-backend: the browser talks to your node directly and the API key never leaves your machine
-(it is stored in `localStorage` and used to HMAC-sign each request).
+backend: the browser talks to your node directly and the reusable macaroon never leaves your machine
+(it is stored in `localStorage`; each request sends a copy bound to that call).
 
 ## Repository layout
 
@@ -13,7 +13,7 @@ backend: the browser talks to your node directly and the API key never leaves yo
 | --------------------------- | ---------------------------------------------------------------------------------------- |
 | `apps/web`                  | The SvelteKit application (routes, page-level state, data layer).                        |
 | `packages/ui`               | `@ldk-server-manager/ui`: the Svelte component library and design tokens used by the app. |
-| `packages/client`           | `@ldk-server-manager/client`: typed ldk-server client (generated protobuf + gRPC-Web + HMAC). |
+| `packages/client`           | `@ldk-server-manager/client`: typed ldk-server client (generated protobuf + gRPC-Web + macaroons). |
 | `contrib/grpc-web-bridge`   | Envoy configuration that bridges browsers (gRPC-Web) to ldk-server (native gRPC).        |
 | `docker-compose.yml`        | Runs both sidecars beside the app, for a node that runs elsewhere.                       |
 | `deploy/`                   | The whole stack self-hosted with Docker Compose: node, dashboard, gateway. See [deploy/README.md](deploy/README.md). |
@@ -40,12 +40,13 @@ Other scripts: `pnpm check` (svelte-check + tsc), `pnpm test`, `pnpm lint`, `pnp
 
 ldk-server exposes native gRPC over HTTP/2 with TLS. Browsers cannot read HTTP/2 trailers,
 so a gRPC-Web bridge has to sit between the page and the node. The request body bytes are
-identical in gRPC and gRPC-Web, so the HMAC signature computed in the browser remains valid
+identical in gRPC and gRPC-Web, so the request-bound macaroon computed in the browser remains valid
 through the bridge.
 
-1. Start ldk-server. It generates two things you need: the API key at
-   `<storage_dir>/<network>/api_key` (32 raw bytes — read it as hex with
-   `xxd -p -c 64 ~/.ldk-server/bitcoin/api_key`) and the certificate at `<storage_dir>/tls.crt`.
+1. Start ldk-server. It generates two things you need: the admin macaroon at
+   `<storage_dir>/<network>/macaroons/admin.macaroon` (already hex text — copy it as-is, do not
+   run it through `xxd`) and the certificate at `<storage_dir>/tls.crt`. The old HMAC `api_key`
+   is not accepted.
 2. Start the sidecars (the bridge, and the assistant gateway):
 
    ```bash
@@ -53,17 +54,17 @@ through the bridge.
    LDK_SERVER_HOST=host.docker.internal LDK_SERVER_PORT=3536 docker compose up -d
    ```
 
-3. Open the web app, enter the bridge URL (`http://localhost:8080`) and the API key.
+3. Open the web app, enter the bridge URL (`http://localhost:8080`) and the macaroon.
 
 Any other gRPC-Web capable proxy (e.g. `grpcwebproxy`, or a reverse proxy with the same
-filter) works as long as it forwards the `x-auth` header unchanged and exposes the
+filter) works as long as it forwards the `macaroon` header unchanged and exposes the
 `grpc-status` / `grpc-message` headers to the browser.
 
 The bridge is a workaround, not a design goal. Three things in ldk-server make it necessary:
 the gRPC status is delivered in HTTP/2 trailers, which browsers cannot read; the server
 rejects the `application/grpc-web+proto` content type; and it sends no CORS headers. If
 ldk-server accepted gRPC-Web directly, this app would talk to a node with no proxy in
-between and no code change here, because the request bytes the browser signs are identical
+between and no code change here, because the request bytes the browser binds into the macaroon are identical
 either way. That is proposed upstream in
 [lightningdevkit/ldk-server#296](https://github.com/lightningdevkit/ldk-server/issues/296).
 
@@ -205,9 +206,11 @@ Two details make the static output behave correctly on Pages:
 
 ## Security notes
 
-- Treat the API key like a wallet password: anyone holding it can move funds.
+- Treat the admin macaroon like a wallet password: anyone holding it can move funds.
 - Serve the app and the bridge over HTTPS when they are not on `localhost`; WebCrypto
-  (used for HMAC) is only available in secure contexts.
+  (used to bind each request) is only available in secure contexts.
+- The bridge must allow the `macaroon` request header. A bridge that only allowed `x-auth`
+  will drop the credential before it reaches the node.
 - The app never stores anything besides the connection settings.
 
 ## License

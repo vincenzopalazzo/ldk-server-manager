@@ -1,26 +1,32 @@
 import { describe, expect, it } from 'vitest';
-import { createHmac } from 'node:crypto';
-import { buildAuthHeader, computeAuthHmac, timestampToBytes } from '../auth.js';
+import { bindMacaroonToRequest, buildMacaroonHeader } from '../auth.js';
+
+// ldk-server-macaroons tests/data/macaroons-v2.txt, request-proof row.
+const REUSABLE =
+	'0201000207746573742d69640002177065726d697373696f6e73203d206e6f64653a7265616400000620fcd6db26ff34eca91e70ec1822ebb0e5ebb0ba3968cdb6544b900d9142a57659';
+const BOUND_GET_NODE_INFO =
+	'0201000207746573742d69640002177065726d697373696f6e73203d206e6f64653a7265616400026172657175657374203d2031383030303030303030204765744e6f6465496e666f2038383535353038616164653136656335373364323165366134383564666430613736323430383563316131346235656364643634383564653063363833396134000006206553a4b4f42f654b01b195823008752c41d0cff8247b77fbb77e4860debcc7e2';
 
 describe('auth', () => {
-	it('encodes timestamps as big-endian u64', () => {
-		expect([...timestampToBytes(1)]).toEqual([0, 0, 0, 0, 0, 0, 0, 1]);
-		expect([...timestampToBytes(0x0102030405)]).toEqual([0, 0, 0, 1, 2, 3, 4, 5]);
+	it('matches the ldk-server request-binding reference', async () => {
+		const bound = await bindMacaroonToRequest(REUSABLE, 'GetNodeInfo', new Uint8Array(5), 1_800_000_000);
+		expect(bound).toBe(BOUND_GET_NODE_INFO);
 	});
 
-	it('matches the reference HMAC-SHA256(api_key, ts_be || body)', async () => {
-		const apiKey = 'super-secret';
-		const ts = 1_700_000_000;
-		const body = new Uint8Array([0, 0, 0, 0, 3, 1, 2, 3]);
-		const expected = createHmac('sha256', apiKey)
-			.update(Buffer.from(timestampToBytes(ts)))
-			.update(Buffer.from(body))
-			.digest('hex');
-		expect(await computeAuthHmac(apiKey, ts, body)).toBe(expected);
+	it('rejects a token that is already bound to a request', async () => {
+		await expect(
+			bindMacaroonToRequest(BOUND_GET_NODE_INFO, 'GetNodeInfo', new Uint8Array(5), 1_800_000_000)
+		).rejects.toThrow(/reusable credential/);
 	});
 
-	it('formats the x-auth header', async () => {
-		const header = await buildAuthHeader('k', new Uint8Array([1]), () => 1_700_000_000_999);
-		expect(header).toMatch(/^HMAC 1700000000:[0-9a-f]{64}$/);
+	it('rejects the old HMAC API key', async () => {
+		await expect(
+			bindMacaroonToRequest('ab'.repeat(32), 'GetNodeInfo', new Uint8Array(5), 1_800_000_000)
+		).rejects.toThrow(/version|hexadecimal/i);
+	});
+
+	it('builds a header from the clock', async () => {
+		const header = await buildMacaroonHeader(REUSABLE, 'GetNodeInfo', new Uint8Array(5), () => 1_800_000_000_999);
+		expect(header).toBe(BOUND_GET_NODE_INFO);
 	});
 });

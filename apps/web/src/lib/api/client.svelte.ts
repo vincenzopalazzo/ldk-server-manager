@@ -10,9 +10,9 @@ let cached: { key: string; client: LdkServerClient } | null = null;
 export function getClient(): LdkServerClient | null {
 	const s = connection.settings;
 	if (!s) return null;
-	const key = `${s.url}|${s.apiKey}`;
+	const key = `${s.url}|${s.macaroon}`;
 	if (!cached || cached.key !== key) {
-		cached = { key, client: new LdkServerClient({ baseUrl: s.url, apiKey: s.apiKey }) };
+		cached = { key, client: new LdkServerClient({ baseUrl: s.url, macaroon: s.macaroon }) };
 	}
 	return cached.client;
 }

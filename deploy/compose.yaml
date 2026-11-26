@@ -24,6 +24,7 @@ services:
 
   ldk-server:
     # https://github.com/vincenzopalazzo/ldk-node-bundle
+    # Must be a macaroon-speaking build. 0.1.0-dbe22c5 still writes the HMAC api_key.
     image: ghcr.io/vincenzopalazzo/ldk-server:${LDK_SERVER_VERSION:-0.1.0-dbe22c5}
     command: ["/config/ldk-server.toml"]
     restart: unless-stopped
@@ -44,10 +45,10 @@ services:
 
   credentials:
     # The node's storage also holds its seed. Its clients (Envoy, the assistant, /bundle.json)
-    # need only the TLS certificate and the API key of the network ldk-server.toml selects, so
-    # copy those into node-client and mount that instead, with a config for ldk-server-mcp that
-    # names only the network. Waits for the node to create them on its first start, and runs
-    # again on every `docker compose up`.
+    # need only the TLS certificate and the admin macaroon of the network ldk-server.toml
+    # selects, so copy those into node-client and mount that instead, with a config for
+    # ldk-server-mcp that names only the network. Waits for the node to create them on its
+    # first start, and runs again on every `docker compose up`.
     image: alpine:3.22
     user: "0:0"
     depends_on: [ldk-server]
@@ -60,16 +61,16 @@ services:
         [ "$$net" = mainnet ] && net=bitcoin
         [ -n "$$net" ] || { echo "no network in ldk-server.toml" >&2; exit 1; }
         for i in $$(seq 1 600); do
-          [ -s "/ldk/$$net/api_key" ] && [ -s /ldk/tls.crt ] && break
+          [ -s "/ldk/$$net/macaroons/admin.macaroon" ] && [ -s /ldk/tls.crt ] && break
           sleep 1
         done
-        [ -s "/ldk/$$net/api_key" ] && [ -s /ldk/tls.crt ] || { echo "ldk-server has not created its $$net API key and certificate after 10 minutes" >&2; exit 1; }
-        rm -rf /client/* && mkdir -p "/client/$$net"
-        cp /ldk/tls.crt /client/tls.crt && cp "/ldk/$$net/api_key" "/client/$$net/api_key"
+        [ -s "/ldk/$$net/macaroons/admin.macaroon" ] && [ -s /ldk/tls.crt ] || { echo "ldk-server has not created its $$net admin macaroon and certificate after 10 minutes" >&2; exit 1; }
+        rm -rf /client/* && mkdir -p "/client/$$net/macaroons"
+        cp /ldk/tls.crt /client/tls.crt && cp "/ldk/$$net/macaroons/admin.macaroon" "/client/$$net/macaroons/admin.macaroon"
         printf '[node]\nnetwork = "%s"\n' "$$net" > /client/mcp.toml
-        chown -R 1000:1000 /client && chmod 755 /client "/client/$$net"
-        chmod 444 /client/tls.crt /client/mcp.toml && chmod 400 "/client/$$net/api_key"
-        echo "copied tls.crt and $$net/api_key"
+        chown -R 1000:1000 /client && chmod 755 /client "/client/$$net" "/client/$$net/macaroons"
+        chmod 444 /client/tls.crt /client/mcp.toml && chmod 400 "/client/$$net/macaroons/admin.macaroon"
+        echo "copied tls.crt and $$net/macaroons/admin.macaroon"
     volumes:
       - ./data/ldk:/ldk:ro
       - ./ldk-server.toml:/config/ldk-server.toml:ro
@@ -99,7 +100,7 @@ services:
       GOOSE_GATEWAY_ALLOWED_ORIGINS: ${PUBLIC_ORIGIN:-}
       # ldk-server-mcp takes the network from node-client's mcp.toml (not the node's config,
       # which holds the Bitcoin RPC password), dials the node by the name in its certificate,
-      # and reads the API key and certificate from node-client, mounted where it looks for them
+      # and reads the admin macaroon and certificate from node-client, mounted where it looks for them
       # ($HOME/.ldk-server). The seed is not in there.
       GOOSE_GATEWAY_MCP_COMMAND: /usr/local/bin/ldk-server-mcp --config /goose/.ldk-server/mcp.toml
       LDK_BASE_URL: ldk-server:3536
@@ -113,7 +114,7 @@ services:
 
   web:
     image: ghcr.io/vincenzopalazzo/ldk-server-manager-web:${WEB_VERSION:-0.1.0}
-    # The node's api_key is 0400 and owned by ldk-server's user; reading it for /bundle.json
+    # The node's admin.macaroon is 0400 and owned by ldk-server's user; reading it for /bundle.json
     # needs the same user.
     user: "1000:0"
     restart: unless-stopped
@@ -122,7 +123,7 @@ services:
       grpc-web-bridge: { condition: service_started }
       goose-gateway: { condition: service_started }
     environment:
-      # Lets the dashboard connect without pasting the API key. It hands out node control, so
+      # Lets the dashboard connect without pasting the macaroon. It hands out node control, so
       # anything beyond this machine must go through AUTH_USER/AUTH_HASH.
       BUNDLE_API_KEY: "true"
       AUTH_USER: ${AUTH_USER:-}
@@ -133,5 +134,5 @@ services:
       - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"
 
 volumes:
-  # The node's TLS certificate and API key, copied out of its storage by `credentials`.
+  # The node's TLS certificate and admin macaroon, copied out of its storage by `credentials`.
   node-client:
