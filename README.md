@@ -193,24 +193,24 @@ pnpm run deploy
 
 ### Continuous integration
 
-Cloudflare Pages is the quality gate for this repo: it builds every push and each pull request
-gets its own preview URL, on Cloudflare's runners rather than GitHub Actions minutes. Connect the
-repository once in the Cloudflare dashboard under Workers & Pages -> ldk-server-manager ->
-Settings -> Builds, with:
+A merge to `main` deploys the site. `.github/workflows/ci.yml` runs `pnpm run ci` on pull
+requests and on every push to `main`. When that push is to `main` and the gate passes, the same
+job uploads `apps/web/build` to the Cloudflare Pages project `ldk-server-manager`.
 
-| Setting                | Value            |
-| ---------------------- | ---------------- |
-| Build command          | `pnpm run ci`    |
-| Build output directory | `apps/web/build` |
-| Root directory         | `/`              |
+That project is a direct upload. It is not connected to GitHub, so Cloudflare does not build on
+push by itself. The push and pull request triggers were off while this repo was private and the
+Actions budget was exhausted; a push then failed the job before any step. The repo is public, so
+the triggers are on again.
+
+The upload needs two repository settings, and it fails closed without them:
+
+| Name                     | Kind     | Value                                      |
+| ------------------------ | -------- | ------------------------------------------ |
+| `CLOUDFLARE_API_TOKEN`   | secret   | API token with Cloudflare Pages Edit       |
+| `CLOUDFLARE_ACCOUNT_ID`  | variable | Account that owns `ldk-server-manager`     |
 
 `pnpm run ci` runs type checking, linting, tests and the build, so a commit that breaks any of
-them fails the deployment and never reaches the site. Node is pinned by `.nvmrc`; the build image
-already ships a pnpm that reads this lockfile, and `PNPM_VERSION` can pin it exactly if you want.
-
-`.github/workflows/ci.yml` holds the same gate for GitHub Actions and is manual-only, because
-Actions cannot start while the account's Actions budget is exhausted. Its header comment says how
-to switch it back on.
+them never reaches the site. Node is pinned by `.nvmrc`.
 
 Two details make the static output behave correctly on Pages:
 
