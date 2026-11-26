@@ -23,7 +23,7 @@ native amd64 and arm64 runners, together with `ldk-node-assistant` (goose-gatewa
 ldk-server-mcp copied in, which the stack runs as its `goose-gateway` service). goose-gateway is
 released by its own repository.
 
-The web image is built here, since the dashboard's source is private:
+The web image is built from this repository:
 
 ```bash
 docker build -f docker/web/Dockerfile -t ldk-server-manager-web .   # local

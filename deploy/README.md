@@ -1,5 +1,11 @@
 # Self-hosted stack
 
+The images pinned in `compose.yaml` are the 0.1.0 release. That ldk-server still
+writes an HMAC API key, and that web image still sends one. They do not speak
+the macaroons in this source. Do not start this stack against a macaroon node,
+and do not upgrade only one side. To run this source against a node you already
+operate, use [`docker-compose.run.yml`](../docker-compose.run.yml) instead.
+
 The whole thing on one machine with Docker Compose: an LDK Lightning node (ldk-server), the
 dashboard, and the assistant's goose gateway.
 

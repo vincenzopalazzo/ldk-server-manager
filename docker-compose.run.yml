@@ -1,0 +1,50 @@
+# Run this source's dashboard against an ldk-server you already operate.
+#
+# The published ghcr.io images tagged 0.1.0 still speak the old HMAC API key.
+# Do not use them with a macaroon node. This file builds the dashboard from
+# the checkout and does not start a Lightning node.
+#
+#   cp /path/to/ldk-server/tls.crt contrib/grpc-web-bridge/ldk-server-tls.crt
+#   LDK_SERVER_HOST=127.0.0.1 LDK_SERVER_PORT=3536 docker compose -f docker-compose.run.yml up -d --build
+#
+# Open http://127.0.0.1:8080. Choose the admin.macaroon file. The macaroon is
+# not baked into the image and is not served at /bundle.json.
+#
+# The certificate must name the host Envoy dials. A certificate issued for
+# 65.108.246.14 will not verify a Tailscale name.
+
+name: ldk-dashboard
+
+services:
+  grpc-web-bridge:
+    image: envoyproxy/envoy:v1.32-latest
+    restart: unless-stopped
+    command:
+      - /bin/sh
+      - -c
+      - |
+        sed -e "s|LDK_SERVER_HOST_PLACEHOLDER|$${LDK_SERVER_HOST}|g" \
+            -e "s|LDK_SERVER_PORT_PLACEHOLDER|$${LDK_SERVER_PORT}|g" \
+            /etc/envoy/envoy.template.yaml > /tmp/envoy.yaml
+        exec envoy -c /tmp/envoy.yaml
+    environment:
+      LDK_SERVER_HOST: ${LDK_SERVER_HOST:?set LDK_SERVER_HOST to the node gRPC host}
+      LDK_SERVER_PORT: ${LDK_SERVER_PORT:-3536}
+    volumes:
+      - ./contrib/grpc-web-bridge/envoy.yaml:/etc/envoy/envoy.template.yaml:ro
+      - ./contrib/grpc-web-bridge/ldk-server-tls.crt:/etc/envoy/ldk-server-tls.crt:ro
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web/Dockerfile
+    image: ldk-server-manager-web:local
+    restart: unless-stopped
+    depends_on:
+      - grpc-web-bridge
+    environment:
+      GRPC_WEB_UPSTREAM: grpc-web-bridge:8080
+      # Off. A public or loopback page must not hand out the admin macaroon.
+      BUNDLE_API_KEY: "false"
+    ports:
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080"

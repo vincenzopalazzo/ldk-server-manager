@@ -1,10 +1,9 @@
 # The web image (see docker/README.md). ldk-server and ldk-server-mcp are built and published by
 # https://github.com/vincenzopalazzo/ldk-node-bundle.
 #
-# Manual-only, like CI: Actions cannot start on this private repo while the account's Actions
-# budget is exhausted, so releases are pushed with docker/web/publish.sh. Run it from Actions ->
-# Images -> Run workflow; nothing is pushed unless "push" is ticked. The web image needs no
+# Manual. Nothing is pushed unless "push" is ticked. The web image needs no
 # emulation: its only per-architecture step copies files onto nginx.
+# docker/web/publish.sh is the fallback when Actions cannot run.
 name: Images
 
 on:
