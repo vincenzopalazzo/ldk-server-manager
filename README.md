@@ -15,7 +15,8 @@ backend: the browser talks to your node directly and the reusable macaroon never
 | `packages/ui`               | `@ldk-server-manager/ui`: the Svelte component library and design tokens used by the app. |
 | `packages/client`           | `@ldk-server-manager/client`: typed ldk-server client (generated protobuf + gRPC-Web + macaroons). |
 | `contrib/grpc-web-bridge`   | Envoy configuration that bridges browsers (gRPC-Web) to ldk-server (native gRPC).        |
-| `docker-compose.yml`        | Runs both sidecars beside the app, for a node that runs elsewhere.                       |
+| `docker-compose.yml`        | Sidecars for `pnpm dev`, when the node runs elsewhere.                                    |
+| `docker-compose.run.yml`    | Builds this dashboard and the bridge. The supported way to run this source.              |
 | `deploy/`                   | The whole stack self-hosted with Docker Compose: node, dashboard, gateway. See [deploy/README.md](deploy/README.md). |
 | `docker/`                   | The small container images the stack uses. See [docker/README.md](docker/README.md).      |
 
@@ -26,6 +27,21 @@ Separation of concerns:
 - **web** wires the two together: connection settings, reactive resources, routes.
 
 ## Getting started
+
+Run the dashboard from this checkout against a macaroon-speaking ldk-server.
+The page binds to this machine only. Copy the node's certificate first. Do not
+commit it, and do not put `admin.macaroon` in the compose file.
+
+```bash
+cp /path/to/ldk-server/tls.crt contrib/grpc-web-bridge/ldk-server-tls.crt
+LDK_SERVER_HOST=127.0.0.1 LDK_SERVER_PORT=3536 docker compose -f docker-compose.run.yml up -d --build
+```
+
+Open http://127.0.0.1:8080 and choose `<storage_dir>/<network>/macaroons/admin.macaroon`.
+The file is already hex text. The published `0.1.0` images still speak the old
+API key. Do not point this page at one of those nodes.
+
+For UI work without the container:
 
 ```bash
 pnpm install
@@ -47,14 +63,12 @@ through the bridge.
    `<storage_dir>/<network>/macaroons/admin.macaroon` (already hex text — copy it as-is, do not
    run it through `xxd`) and the certificate at `<storage_dir>/tls.crt`. The old HMAC `api_key`
    is not accepted.
-2. Start the sidecars (the bridge, and the assistant gateway):
-
-   ```bash
-   cp /path/to/ldk-server/storage/tls.crt contrib/grpc-web-bridge/ldk-server-tls.crt
-   LDK_SERVER_HOST=host.docker.internal LDK_SERVER_PORT=3536 docker compose up -d
-   ```
-
-3. Open the web app, enter the bridge URL (`http://localhost:8080`) and the macaroon.
+2. Start the dashboard and bridge with `docker-compose.run.yml`, as above.
+   `docker compose up -d` without `-f docker-compose.run.yml` starts only the
+   sidecars used by `pnpm dev`, including the assistant gateway.
+3. Open http://127.0.0.1:8080 and choose the macaroon file. When using
+   `pnpm dev`, the bridge URL is `http://127.0.0.1:8080` and the page is
+   http://127.0.0.1:5173.
 
 Any other gRPC-Web capable proxy (e.g. `grpcwebproxy`, or a reverse proxy with the same
 filter) works as long as it forwards the `macaroon` header unchanged and exposes the
