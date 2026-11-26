@@ -9,6 +9,9 @@
 #
 # Open http://127.0.0.1:8080. Choose the admin.macaroon file. The macaroon is
 # not baked into the image and is not served at /bundle.json.
+# The assistant is goose-gateway on http://127.0.0.1:8791, which is the page's
+# default. Sign in from the assistant panel. Node tools are not attached: the
+# published ldk-server-mcp still reads the HMAC api_key.
 #
 # The certificate must name the host Envoy dials. A certificate issued for
 # 65.108.246.14 will not verify a Tailscale name.
@@ -16,6 +19,14 @@
 name: ldk-dashboard
 
 services:
+  init:
+    image: alpine:3.22
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /data/goose && chown 1000:1000 /data/goose"]
+    volumes:
+      - ./data:/data
+    restart: "no"
+
   grpc-web-bridge:
     image: envoyproxy/envoy:v1.32-latest
     restart: unless-stopped
@@ -34,6 +45,20 @@ services:
       - ./contrib/grpc-web-bridge/envoy.yaml:/etc/envoy/envoy.template.yaml:ro
       - ./contrib/grpc-web-bridge/ldk-server-tls.crt:/etc/envoy/ldk-server-tls.crt:ro
 
+  goose-gateway:
+    # Chat and provider sign-in only. Do not set GOOSE_GATEWAY_MCP_COMMAND to the
+    # published ldk-server-mcp: it still reads api_key and cannot call this node.
+    image: ghcr.io/vincenzopalazzo/goose-gateway:${GOOSE_GATEWAY_VERSION:-0.3.0}
+    restart: unless-stopped
+    depends_on:
+      init: { condition: service_completed_successfully }
+    environment:
+      GOOSE_GATEWAY_ALLOWED_ORIGINS: ${GOOSE_GATEWAY_ALLOWED_ORIGINS:-http://127.0.0.1:8080,http://localhost:8080}
+    volumes:
+      - ${GOOSE_CONFIG_DIR:-./data/goose}:/goose/config
+    ports:
+      - "127.0.0.1:${GOOSE_PORT:-8791}:8791"
+
   web:
     build:
       context: .
@@ -42,8 +67,10 @@ services:
     restart: unless-stopped
     depends_on:
       - grpc-web-bridge
+      - goose-gateway
     environment:
       GRPC_WEB_UPSTREAM: grpc-web-bridge:8080
+      GOOSE_GATEWAY_UPSTREAM: goose-gateway:8791
       # Off. A public or loopback page must not hand out the admin macaroon.
       BUNDLE_API_KEY: "false"
     ports:
