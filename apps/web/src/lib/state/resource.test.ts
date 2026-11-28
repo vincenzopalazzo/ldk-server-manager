@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import { GrpcCode, LdkServerError } from '@ldk-server-manager/client';
+import { PagedList } from './payments.svelte';
 import { Resource } from './resource.svelte';
+
+function unavailable(): LdkServerError {
+	return new LdkServerError('GraphGetNode', GrpcCode.UNAVAILABLE, 'HTTP 502 Bad Gateway');
+}
 
 describe('Resource', () => {
 	it('stores data on success', async () => {
@@ -31,6 +37,41 @@ describe('Resource', () => {
 		await r.refresh();
 		expect(r.data).toBeUndefined();
 		expect(r.error).toBe('boom');
+	});
+});
+
+describe('Resource transient retry', () => {
+	it('tries a dropped proxy call once more, then keeps the result', async () => {
+		const fetcher = vi
+			.fn<() => Promise<string>>()
+			.mockRejectedValueOnce(unavailable())
+			.mockResolvedValueOnce('alias');
+		const r = new Resource(fetcher);
+		await expect(r.refresh()).resolves.toBe('alias');
+		expect(fetcher).toHaveBeenCalledTimes(2);
+		expect(r.error).toBeNull();
+	});
+
+	it('does not retry a node error', async () => {
+		const fetcher = vi.fn<() => Promise<string>>().mockRejectedValue(new Error('not found'));
+		const r = new Resource(fetcher);
+		await r.refresh();
+		expect(fetcher).toHaveBeenCalledTimes(1);
+		expect(r.error).toBe('not found');
+	});
+});
+
+describe('PagedList transient retry', () => {
+	it('retries one page when the proxy returns 502', async () => {
+		const fetchPage = vi
+			.fn<() => Promise<{ items: string[]; next?: string }>>()
+			.mockRejectedValueOnce(unavailable())
+			.mockResolvedValueOnce({ items: ['a'] });
+		const list = new PagedList(fetchPage);
+		await list.refresh();
+		expect(fetchPage).toHaveBeenCalledTimes(2);
+		expect(list.items).toEqual(['a']);
+		expect(list.error).toBeNull();
 	});
 });
 
