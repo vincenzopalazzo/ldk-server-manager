@@ -13,6 +13,25 @@ export function errorCode(e: unknown): number | null {
 }
 
 /**
+ * The proxy in front of the bridge dropped the call (HTTP 502/503/504, or the
+ * browser blocked it because that error page had no CORS header). The node did
+ * not answer. Safe to try a read again; not a reason to remember "no such alias".
+ */
+export function isTransientRpcError(e: unknown): boolean {
+	return e instanceof LdkServerError && e.isNetworkError;
+}
+
+/** One more attempt when the first failed in transit. Does not retry a node error. */
+export async function retryTransient<T>(fn: () => Promise<T>): Promise<T> {
+	try {
+		return await fn();
+	} catch (e) {
+		if (!isTransientRpcError(e)) throw e;
+		return await fn();
+	}
+}
+
+/**
  * A reactive, refreshable async value. Wraps a fetcher with loading/error state
  * and optional polling. Built on Svelte 5 runes so it can live in a module.
  */
@@ -53,7 +72,7 @@ export class Resource<T> {
 		// Run the fetcher inside an async boundary: a fetcher that throws synchronously
 		// (e.g. requireClient() with no connection) must land in .catch like any failed
 		// request, not escape to the caller and leave `loading` stuck on.
-		this.inflight = (async () => this.fetcher())()
+		this.inflight = (async () => retryTransient(() => this.fetcher()))()
 			.then((value) => {
 				if (generation !== this.generation) return undefined;
 				this.data = value;

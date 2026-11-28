@@ -1,6 +1,7 @@
 import { SvelteMap } from 'svelte/reactivity';
 import { getClient } from '$lib/api/client.svelte';
 import { truncateId } from '$lib/utils/format';
+import { isTransientRpcError, retryTransient } from './resource.svelte';
 
 /**
  * Resolves node aliases from the gossip graph (GraphGetNode), cached per node id.
@@ -29,12 +30,14 @@ class AliasStore {
 		if (!client) return null;
 		this.pending.add(nodeId);
 		try {
-			const res = await client.api.graphGetNode({ nodeId });
+			const res = await retryTransient(() => client.api.graphGetNode({ nodeId }));
 			const alias = res.node?.announcementInfo?.alias?.trim() || null;
 			this.cache.set(nodeId, alias);
 			return alias;
-		} catch {
-			this.cache.set(nodeId, null);
+		} catch (e) {
+			// A dropped proxy call is not "this node has no alias". Caching that
+			// leaves the page on a truncated pubkey until a full reload.
+			if (!isTransientRpcError(e)) this.cache.set(nodeId, null);
 			return null;
 		} finally {
 			this.pending.delete(nodeId);

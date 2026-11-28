@@ -1,6 +1,6 @@
 import type { Payment, ForwardedPayment } from '@ldk-server-manager/client';
 import { requireClient } from '$lib/api/client.svelte';
-import { describeError } from './resource.svelte';
+import { describeError, retryTransient } from './resource.svelte';
 
 /**
  * Cursor-paginated list backed by ldk-server's `page_token` scheme.
@@ -44,7 +44,7 @@ export class PagedList<T> {
 		const generation = this.generation;
 		this.loading = true;
 		try {
-			const page = await this.fetchPage(token);
+			const page = await retryTransient(() => this.fetchPage(token));
 			if (generation !== this.generation) return;
 			this.items = replace ? page.items : [...this.items, ...page.items];
 			this.nextPageToken = page.next;
