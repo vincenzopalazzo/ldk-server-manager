@@ -297,8 +297,34 @@ use `tailscale funnel`: that would put the bridge on the public internet.
    URL. `Missing macaroon credentials` means the hex never arrived. Any other
    gRPC error is the node rejecting that macaroon.
 
-The assistant is not part of this path. On Pages it calls `/goose/v1` on
-`pages.dev`, which is not the gateway. Node control does not need it.
+### Assistant over the same tailnet
+
+On Pages the assistant does not call `/goose/v1` on `pages.dev`. That path
+exists only when nginx and the gateway share an origin. Point it at the
+gateway on its own Tailscale HTTPS port. Do not use `http://127.0.0.1:8791`
+from the Pages site: that is this browser's machine, not the bridge host.
+
+`docker-compose.run.yml` already publishes the gateway on loopback
+(`127.0.0.1:${GOOSE_PORT:-8791}`). Allow the Pages origin, then serve that
+port. This replaces whatever this node was already serving on 8443, not the
+bridge on 443.
+
+```bash
+# in .env, next to the node host
+GOOSE_GATEWAY_ALLOWED_ORIGINS=https://ldk-server-manager.pages.dev
+docker compose -f docker-compose.run.yml up -d --no-deps goose-gateway
+sudo tailscale serve --bg --https=8443 --yes ${GOOSE_PORT:-8791}
+```
+
+In the page, open Assistant provider and set the gateway address to
+`https://<hostname>.<tailnet>.ts.net:8443/v1`. Save. The health line should
+stop saying the gateway is unreachable.
+
+Sign in from that panel. The credential stays on the gateway machine, not in
+the browser. A headless or remote gateway falls back to a device code: finish
+the provider's page, and if the callback address is `http://127.0.0.1:…`,
+paste that address back into the panel. Until that sign-in exists, the
+gateway answers and lists models, but the page says it is not set up.
 
 ### Continuous integration
 
