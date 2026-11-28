@@ -10,6 +10,7 @@
 #   LDK_SERVER_HOST=<node host> LDK_SERVER_PORT=3536 \
 #     docker compose -f docker-compose.run.yml -f docker-compose.pages.yml up -d --no-deps grpc-web-bridge
 #   sudo tailscale serve --bg --yes 8085
+#   sudo tailscale serve --bg --https=8443 --yes "${GOOSE_PORT:-8791}"
 
 services:
   grpc-web-bridge:
