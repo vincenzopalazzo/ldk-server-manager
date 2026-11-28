@@ -1,0 +1,17 @@
+# Publish only the gRPC-Web bridge, on loopback, for the Pages site.
+#
+# https://ldk-server-manager.pages.dev cannot speak native gRPC, and it cannot
+# call a plain-HTTP or self-signed bridge. Tailscale Serve puts a tailnet HTTPS
+# name in front of this port. Do not bind 0.0.0.0: the host may have a public
+# address, and the bridge is node control once someone holds the macaroon.
+# Do not start `web` for this path. See README.md, "Pages site over Tailscale".
+#
+#   cp /path/to/ldk-server/tls.crt contrib/grpc-web-bridge/ldk-server-tls.crt
+#   LDK_SERVER_HOST=<node host> LDK_SERVER_PORT=3536 \
+#     docker compose -f docker-compose.run.yml -f docker-compose.pages.yml up -d --no-deps grpc-web-bridge
+#   sudo tailscale serve --bg --yes 8085
+
+services:
+  grpc-web-bridge:
+    ports:
+      - "127.0.0.1:8085:8080"

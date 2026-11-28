@@ -17,6 +17,7 @@ backend: the browser talks to your node directly and the reusable macaroon never
 | `contrib/grpc-web-bridge`   | Envoy configuration that bridges browsers (gRPC-Web) to ldk-server (native gRPC).        |
 | `docker-compose.yml`        | Sidecars for `pnpm dev`, when the node runs elsewhere.                                    |
 | `docker-compose.run.yml`    | Builds this dashboard and the bridge. The supported way to run this source.              |
+| `docker-compose.pages.yml`  | Publishes only the bridge on loopback, for the Pages site over Tailscale.                |
 | `deploy/`                   | The whole stack self-hosted with Docker Compose: node, dashboard, gateway. See [deploy/README.md](deploy/README.md). |
 | `docker/`                   | The small container images the stack uses. See [docker/README.md](docker/README.md).      |
 
@@ -68,7 +69,9 @@ through the bridge.
    is not accepted.
 2. Start the dashboard and bridge with `docker-compose.run.yml`, as above.
    `docker compose up -d` without `-f docker-compose.run.yml` starts only the
-   sidecars used by `pnpm dev`, including the assistant gateway.
+   sidecars used by `pnpm dev`, including the assistant gateway. To use the
+   hosted page instead of this dashboard, follow
+   [Pages site over Tailscale](#pages-site-over-tailscale).
 3. Open http://127.0.0.1:8080 and choose the macaroon file. When using
    `pnpm dev`, the bridge URL is `http://127.0.0.1:8080` and the page is
    http://127.0.0.1:5173.
@@ -191,6 +194,112 @@ Deploy the current working tree:
 pnpm run deploy
 ```
 
+### Pages site over Tailscale
+
+The site at https://ldk-server-manager.pages.dev is only the page. It cannot
+speak to ldk-server. Browsers do not speak native gRPC, and a page on HTTPS
+will not call `http://100.x.x.x` (mixed content) or a self-signed certificate
+(`fetch` fails; there is no proceed button). Run the bridge from this repo on
+a machine that can dial the node, put Tailscale HTTPS in front of it, then
+paste that name and the macaroon into the page.
+
+Do not point the page at port `3536`. Do not start `web` for this path. Do not
+use `tailscale funnel`: that would put the bridge on the public internet.
+
+1. Copy the node's certificate. It must name the host Envoy dials. A
+   certificate issued for a public IP will not verify a Tailscale name, and
+   the reverse.
+
+   ```bash
+   cp /path/to/ldk-server/tls.crt contrib/grpc-web-bridge/ldk-server-tls.crt
+   ```
+
+2. Publish the bridge on loopback only. `docker-compose.pages.yml` binds
+   `127.0.0.1:8085`. Do not change that to `0.0.0.0`.
+
+   ```bash
+   LDK_SERVER_HOST=<node host> LDK_SERVER_PORT=3536 \
+     docker compose -f docker-compose.run.yml -f docker-compose.pages.yml \
+     up -d --no-deps grpc-web-bridge
+   docker compose -f docker-compose.run.yml stop web
+   ```
+
+   `--no-deps` is what keeps the dashboard container from starting. `stop web`
+   matters if an earlier `up` already started it.
+
+   From that machine, a call with no macaroon must reach the node:
+
+   ```bash
+   curl -sD - -o /dev/null -X POST \
+     http://127.0.0.1:8085/api.LightningNode/GetNodeInfo \
+     -H 'content-type: application/grpc-web+proto' -H 'x-grpc-web: 1' \
+     --data-binary ''
+   ```
+
+   Expect `grpc-status: 16` and `Missing macaroon credentials`. That is the
+   node answering. Connection refused means the bridge is not published. No
+   `grpc-status` header means Envoy did not reach the node (host, port, or
+   certificate name).
+
+3. Turn on Tailscale HTTPS for the tailnet if `tailscale serve` says it is not
+   enabled. The command prints the admin-console link. Then replace whatever
+   this node was already serving on 443:
+
+   ```bash
+   sudo tailscale serve --bg --yes 8085
+   tailscale serve status
+   ```
+
+   `serve config denied` means this user is not the Tailscale operator. Run it
+   with `sudo`, or once: `sudo tailscale set --operator=$USER`.
+
+   Status should show `https://<hostname>.<tailnet>.ts.net/` proxying
+   `http://127.0.0.1:8085`, tailnet only.
+
+4. On each machine that will open the page, that name has to resolve. If
+   `tailscale dns status` says Tailscale DNS is disabled:
+
+   ```bash
+   tailscale set --accept-dns=true
+   ```
+
+   The phone has to be connected to the tailnet. The bridge is not reachable
+   from the public internet.
+
+   Check the name from the client, not only from the bridge host:
+
+   ```bash
+   curl -sD - -o /dev/null -X POST \
+     https://<hostname>.<tailnet>.ts.net/api.LightningNode/GetNodeInfo \
+     -H 'content-type: application/grpc-web+proto' -H 'x-grpc-web: 1' \
+     -H 'origin: https://ldk-server-manager.pages.dev' \
+     --data-binary ''
+   ```
+
+   Expect `grpc-status: 16` and
+   `access-control-allow-origin: https://ldk-server-manager.pages.dev`.
+   The bridge already allows that origin and forwards the `macaroon` header.
+
+5. Open https://ldk-server-manager.pages.dev.
+
+   - **Server URL:** `https://<hostname>.<tailnet>.ts.net` — no port.
+   - **Macaroon:** the hex text of `admin.macaroon`. Paste it into the
+     Macaroon field. Do not put it in the address.
+
+   ```bash
+   cat <storage_dir>/<network>/macaroons/admin.macaroon
+   ```
+
+   The file is already hex. Do not run it through `xxd`, and do not hex-encode
+   it again. Then press Connect.
+
+   A network error after a correct paste is the name, Tailscale, or an `http://`
+   URL. `Missing macaroon credentials` means the hex never arrived. Any other
+   gRPC error is the node rejecting that macaroon.
+
+The assistant is not part of this path. On Pages it calls `/goose/v1` on
+`pages.dev`, which is not the gateway. Node control does not need it.
+
 ### Continuous integration
 
 A merge to `main` deploys the site. `.github/workflows/ci.yml` runs `pnpm run ci` on pull
@@ -228,6 +337,8 @@ Two details make the static output behave correctly on Pages:
   (used to bind each request) is only available in secure contexts.
 - The bridge must allow the `macaroon` request header. A bridge that only allowed `x-auth`
   will drop the credential before it reaches the node.
+- Do not publish the Pages bridge on `0.0.0.0`, and do not put it on the public
+  internet with `tailscale funnel`. Tailscale Serve keeps it on the tailnet.
 - The app never stores anything besides the connection settings.
 
 ## License
