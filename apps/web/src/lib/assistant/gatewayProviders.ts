@@ -208,7 +208,7 @@ export function checkRedirectAddress(raw: string): string | null {
 	}
 	const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
 	if (url.protocol !== 'http:' || !loopback) {
-		return 'That is not it: the address starts with http://localhost or http://127.0.0.1.';
+		return 'That is the sign-in page, not the callback. Paste the address the browser tried to open. It starts with http://127.0.0.1 or http://localhost and includes ?code=.';
 	}
 	if (!url.search) return 'The address is cut off: it should include the part after “?”.';
 	return null;
